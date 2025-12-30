@@ -1,110 +1,114 @@
-struct HessianCache # to avoid computing multiple times
-    Hxx::Array{Float32,3}
-    Hyy::Array{Float32,3}
-    Hzz::Array{Float32,3}
-    Hxy::Array{Float32,3}
-    Hxz::Array{Float32,3}
-    Hyz::Array{Float32,3}
+using StaticArrays, LinearAlgebra
+
+
+struct HessianEigenCache
+    λ1::Array{Float32,3}
+    λ2::Array{Float32,3}
+    λ3::Array{Float32,3}
 end
 
-function HessianCache(Nx::Int, Ny::Int, Nz::Int)
-    return HessianCache(
-        Array{Float32}(undef, Nx, Ny, Nz),
-        Array{Float32}(undef, Nx, Ny, Nz),
-        Array{Float32}(undef, Nx, Ny, Nz),
+function HessianEigenCache(Nx::Int, Ny::Int, Nz::Int)
+    return HessianEigenCache(
         Array{Float32}(undef, Nx, Ny, Nz),
         Array{Float32}(undef, Nx, Ny, Nz),
         Array{Float32}(undef, Nx, Ny, Nz)
     )
 end
 
-"""
-    computeHessian(field) -> HessianCache
 
-Compute the Hessian of a scalar field using Fourier derivatives.
-Allocates and returns a new `HessianCache`.
 """
-function computeHessian(
+    computeHessianEigenvalues(field) -> HessianEigenCache
+
+Compute Hessian eigenvalues of a scalar field using Fourier derivatives.
+Allocates and returns an eigenvalue cache.
+"""
+function computeHessianEigenvalues(
     field::AbstractArray{<:Real,3},
-    kx::AbstractArray,
-    ky::AbstractArray,
-    kz::AbstractArray
-)::HessianCache
+    kx, ky, kz
+)::HessianEigenCache
 
     Nx, Ny, Nz = size(field)
-    cache = HessianCache(Nx, Ny, Nz)
+    cache = HessianEigenCache(Nx, Ny, Nz)
 
-    computeHessian!(field, kx, ky, kz, cache)
+    computeHessianEigenvalues!(field, kx, ky, kz, cache)
 
     return cache
 end
 
 
 """
-    computeHessian!(field, cache)
+    computeHessianEigenvalues!(field,cache)
 
-Compute the Hessian of `field` in-place and store components in `cache`.
+Compute Hessian eigenvalues of `field` and store them in `cache`.
 """
-function computeHessian!(
+function computeHessianEigenvalues!(
     field::AbstractArray{<:Real,3},
-    kx::AbstractArray,
-    ky::AbstractArray,
-    kz::AbstractArray,
-    cache::HessianCache
+    kx, ky, kz,
+    cache::HessianEigenCache
 )
-    # Forward FFT
     fftField = FFTW.fft(field)
-
-    # Allocate a single temporary buffer for inverse FFTs
     tmp = similar(fftField)
+
+    # Allocate six temporary real buffers (local, not cached)
+    Hxx = similar(cache.λ1)
+    Hyy = similar(cache.λ1)
+    Hzz = similar(cache.λ1)
+    Hxy = similar(cache.λ1)
+    Hxz = similar(cache.λ1)
+    Hyz = similar(cache.λ1)
 
     computeHessianComponents!(
         fftField, tmp,
         kx, ky, kz,
+        Hxx, Hyy, Hzz, Hxy, Hxz, Hyz
+    )
+
+    computeEigenvalues!(
+        Hxx, Hyy, Hzz, Hxy, Hxz, Hyz,
         cache
     )
 
     return nothing
 end
 
-
 function computeHessianComponents!(
-    fftField,
-    tmp,
-    kx,
-    ky,
-    kz,
-    cache::HessianCache
+    fftField, tmp,
+    kx, ky, kz,
+    Hxx, Hyy, Hzz, Hxy, Hxz, Hyz
 )
-    # Hxx
-    hessianComp!(tmp, fftField, kx, kx)
-    cache.Hxx .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kx, kx); Hxx .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, ky, ky); Hyy .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kz, kz); Hzz .= real.(FFTW.ifft(tmp))
 
-    # Hyy
-    hessianComp!(tmp, fftField, ky, ky)
-    cache.Hyy .= real.(FFTW.ifft(tmp))
-
-    # Hzz
-    hessianComp!(tmp, fftField, kz, kz)
-    cache.Hzz .= real.(FFTW.ifft(tmp))
-
-    # Hxy
-    hessianComp!(tmp, fftField, kx, ky)
-    cache.Hxy .= real.(FFTW.ifft(tmp))
-
-    # Hxz
-    hessianComp!(tmp, fftField, kx, kz)
-    cache.Hxz .= real.(FFTW.ifft(tmp))
-
-    # Hyz
-    hessianComp!(tmp, fftField, ky, kz)
-    cache.Hyz .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kx, ky); Hxy .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kx, kz); Hxz .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, ky, kz); Hyz .= real.(FFTW.ifft(tmp))
 
     return nothing
 end
 
 
-@inline function hessianComp!( # speedy function to not copy-paste
+function computeEigenvalues!(
+    Hxx, Hyy, Hzz, Hxy, Hxz, Hyz,
+    cache::HessianEigenCache
+)
+    @inbounds for I in eachindex(Hxx)
+        H = @SMatrix [
+            Hxx[I]  Hxy[I]  Hxz[I];
+            Hxy[I]  Hyy[I]  Hyz[I];
+            Hxz[I]  Hyz[I]  Hzz[I]
+        ]
+
+        λ = eigen(Symmetric(H)).values
+        cache.λ1[I] = λ[1]
+        cache.λ2[I] = λ[2]
+        cache.λ3[I] = λ[3]
+    end
+
+    return nothing
+end
+
+@inline function hessianComp!(
     tmp,
     fftField,
     kα,
