@@ -73,13 +73,15 @@ function computeHessianComponents!(
     kx, ky, kz,
     Hxx, Hyy, Hzz, Hxy, Hxz, Hyz
 )
-    hessianComp!(tmp, fftField, kx, kx); Hxx .= real.(FFTW.ifft(tmp))
-    hessianComp!(tmp, fftField, ky, ky); Hyy .= real.(FFTW.ifft(tmp))
-    hessianComp!(tmp, fftField, kz, kz); Hzz .= real.(FFTW.ifft(tmp))
+    # Diagonal components (∂²/∂x², ∂²/∂y², ∂²/∂z²)
+    hessianComp!(tmp, fftField, kx, kx, 1, 1); Hxx .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, ky, ky, 2, 2); Hyy .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kz, kz, 3, 3); Hzz .= real.(FFTW.ifft(tmp))
 
-    hessianComp!(tmp, fftField, kx, ky); Hxy .= real.(FFTW.ifft(tmp))
-    hessianComp!(tmp, fftField, kx, kz); Hxz .= real.(FFTW.ifft(tmp))
-    hessianComp!(tmp, fftField, ky, kz); Hyz .= real.(FFTW.ifft(tmp))
+    # Off-diagonal components (∂²/∂x∂y, ∂²/∂x∂z, ∂²/∂y∂z)
+    hessianComp!(tmp, fftField, kx, ky, 1, 2); Hxy .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kx, kz, 1, 3); Hxz .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, ky, kz, 2, 3); Hyz .= real.(FFTW.ifft(tmp))
 
     return nothing
 end
@@ -105,14 +107,21 @@ function computeEigenvalues!(
     return nothing
 end
 
-@inline function hessianComp!(
-    tmp,
-    fftField,
-    kα,
-    kβ
-)
-    @inbounds @simd for i in eachindex(fftField)
-        tmp[i] = fftField[i] * (-kα[i] * kβ[i])
+# Extract k-vector component based on dimension (1=x, 2=y, 3=z)
+@inline selectK(kVec, i, j, k, dim) = dim == 1 ? kVec[i] : (dim == 2 ? kVec[j] : kVec[k])
+
+"""
+Compute Hessian component in Fourier space: ∂²/∂α∂β → -kα·kβ·f̂(k)
+Uses 1D k-vectors and dimension indices to construct full 3D derivatives.
+"""
+@inline function hessianComp!(tmp, fftField, kα, kβ, dimα::Int, dimβ::Int)
+    Nx, Ny, Nz = size(fftField)
+    
+    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+        kαVal = selectK(kα, i, j, k, dimα)
+        kβVal = selectK(kβ, i, j, k, dimβ)
+        tmp[i,j,k] = fftField[i,j,k] * (-kαVal * kβVal)
     end
+    
     return nothing
 end
