@@ -12,4 +12,5 @@ end
 @enum CacheMode begin
     Read
     Write
+    None
 end
