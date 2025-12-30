@@ -1,5 +1,8 @@
 module NeoNEXUS
 
+using StaticArrays, LinearAlgebra, FFTW, Statistics
+
+
 include("Types.jl")
 include("Hessian.jl")
 include("Filters.jl")
@@ -19,6 +22,10 @@ export
     # enums
     SignatureMethod,
     CacheMode,
+
+    # hessians
+    computeHessianEigenvalues,
+    computeHessianEigenvalues!,
 
     # orchestration
     NeoNEXUSRunner

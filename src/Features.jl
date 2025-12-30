@@ -15,7 +15,7 @@ end
 function (feature::SheetFeature)(
     field::AbstractArray,
     method::SignatureMethod,
-    cache::HessianCache,
+    cache::HessianEigenCache,
     mode::CacheMode
 )::AbstractArray
     # reuse or populate cache
@@ -38,7 +38,7 @@ end
 function (feature::AbstractFeature)(
     field::AbstractArray,
     method::SignatureMethod,
-    cache::HessianCache,
+    cache::HessianEigenCache,
     mode::CacheMode
 )
     error("Cached feature call not implemented")

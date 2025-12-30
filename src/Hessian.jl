@@ -1,6 +1,3 @@
-using StaticArrays, LinearAlgebra
-
-
 struct HessianEigenCache
     λ1::Array{Float32,3}
     λ2::Array{Float32,3}
