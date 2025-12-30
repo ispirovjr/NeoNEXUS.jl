@@ -65,7 +65,7 @@ function computeHessianEigenvalues!(
         cache
     )
 
-    return nothing
+    return cache
 end
 
 function computeHessianComponents!(

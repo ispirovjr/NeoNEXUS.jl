@@ -52,7 +52,7 @@ kz = [kz for kx in kr, ky in kr, kz in kr]
     end
 
     @testset "Cylindrical Filament" begin
-        field = X.^2 .+ Y.^2
+        field = X.^2 .+ Y.^2 .+Z*0
         cache = computeHessianEigenvalues(field, kx, ky, kz)
 
         @test isapprox(median(cache.λ1), 0.0; atol=0.1)
@@ -61,7 +61,7 @@ kz = [kz for kx in kr, ky in kr, kz in kr]
     end
 
     @testset "Planar Wall" begin
-        field = X.^2
+        field = X.^2 .+ Y*0 .+ Z*0
         cache = computeHessianEigenvalues(field, kx, ky, kz)
 
         @test isapprox(median(cache.λ1), 0.0; atol=0.1)

@@ -1,4 +1,4 @@
-struct NeoNEXUSRunner # will change later for array featurer and filters
+struct NeoNEXUSRunner # will change later for array features and filters
     filter::AbstractScaleFilter
     features::Vector{AbstractFeature}
     scales::Vector{Float64}

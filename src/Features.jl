@@ -1,13 +1,22 @@
 struct SheetFeature <: AbstractMorphologicalFeature # Cosmological Walls
-    signifficanceMap
-    responseMap
+    significanceMap::Array{Float32,3} 
+    responseMap::Array{Float32,3}  
     kx::Vector{Float64}
     ky::Vector{Float64}
     kz::Vector{Float64}
+
+    function SheetFeature(gridSize::Tuple{Int,Int,Int}, kx, ky, kz)
+        sigMap = zeros(Float32, gridSize)
+        respMap = zeros(Float32, gridSize)
+        new(sigMap, respMap, kx, ky, kz)
+    end
+
 end
 
-struct LineFeature <: AbstractMorphologicalFeature 
-    signifficanceMap
+
+
+struct LineFeature <: AbstractMorphologicalFeature  
+    significanceMap
     responseMap
     kx::Vector{Float64}
     ky::Vector{Float64}
@@ -15,7 +24,7 @@ struct LineFeature <: AbstractMorphologicalFeature
 end
 
 struct NodeFeature <: AbstractMorphologicalFeature
-    signifficanceMap
+    significanceMap
     responseMap
     kx::Vector{Float64}
     ky::Vector{Float64}
@@ -25,15 +34,17 @@ end
 
 function (feature::AbstractFeature)(
     field::AbstractArray{<:Real,3},
-    cache::HessianEigenCache = nothing,
-    mode::CacheMode = CacheMode.None)
+    cache::Union{Nothing,HessianEigenCache} = nothing,
+    mode::CacheMode = None)
 
-    if mode == CacheMode.None
+
+
+    if mode == None
         localCache = computeHessianEigenvalues(field, feature.kx, feature.ky, feature.kz)
-    elseif mode == CacheMode.Read
+    elseif mode == Read
         @assert cache !== nothing "Cache must be provided in Read mode"
         localCache = cache
-    elseif mode == CacheMode.Write
+    elseif mode == Write
         @assert cache !== nothing "Cache must be provided in Write mode"
         computeHessianEigenvalues!(field, feature.kx, feature.ky, feature.kz, cache)
         localCache = cache
@@ -41,13 +52,9 @@ function (feature::AbstractFeature)(
 
     sigMap = computeSignature(feature, localCache)
 
-    # Store the significance map in the feature (aggregated or first scale)
-    if feature.significanceMap === nothing
-        feature.significanceMap = sigMap  # maybe for better type clarity we can set sig to zero from the start
-    else
-        # voxel-wise max aggregation for multi-scale processing
-        @. feature.significanceMap = max(feature.significanceMap, sigMap)
-    end
+    # voxel-wise max aggregation for multi-scale processing
+    @. feature.significanceMap = max(feature.significanceMap, sigMap)
+    
 
     return sigMap
 end
@@ -57,14 +64,26 @@ function computeSignature(feature::SheetFeature, cache::HessianEigenCache)
     S = zeros(Float32, size(cache.λ1))
 
     @inbounds for I in CartesianIndices(S)
-        l1, l2, l3 = cache.λ1[I], cache.λ2[I], cache.λ3[I]
-        invl1 = 1.0f0 / l1
-        r21, r31 = abs(l2*invl1), abs(l3*invl1)
-        m1, m2, m3 = l1<0 ? 1f0 : 0f0, l2<0 ? 1f0 : 0f0, l3<0 ? 1f0 : 0f0
-        c21, c31 = r21<1 ? 1f0 : 0f0, r31<1 ? 1f0 : 0f0
+        λ1 = cache.λ1[I]
+        λ2 = cache.λ2[I]
+        λ3 = cache.λ3[I]
 
-        # Wall (sheet) signature
-        S[I] = (1 - r21)*(1 - r31)*abs(l1)*(m1*c21*c31)
+        # Ratios of eigenvalues
+        r21 = abs(λ2 / λ1)
+        r31 = abs(λ3 / λ1)
+
+        # Negative eigenvalue masks
+        mask1 = λ1 < 0 ? 1f0 : 0f0
+        mask2 = λ2 < 0 ? 1f0 : 0f0
+        mask3 = λ3 < 0 ? 1f0 : 0f0
+
+        # Condition masks for ratios < 1
+        cond21 = r21 < 1 ? 1f0 : 0f0
+        cond31 = r31 < 1 ? 1f0 : 0f0
+
+        # Wall (sheet) signature formula
+        S[I] = (1 - r21) * (1 - r31) * abs(λ1) * (mask1 * cond21 * cond31)
+
     end
 
     return S
