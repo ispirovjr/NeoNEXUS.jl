@@ -1,3 +1,4 @@
+# Orchestrates multi-scale feature detection pipeline
 struct NeoNEXUSRunner # will change later for array features and filters
     filter::AbstractScaleFilter
     features::Vector{AbstractFeature}

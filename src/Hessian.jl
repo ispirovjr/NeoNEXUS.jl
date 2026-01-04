@@ -1,3 +1,4 @@
+# Stores sorted eigenvalues λ1 ≤ λ2 ≤ λ3 per voxel
 struct HessianEigenCache
     λ1::Array{Float32,3}
     λ2::Array{Float32,3}

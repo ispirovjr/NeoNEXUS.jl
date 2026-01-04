@@ -21,7 +21,11 @@ export
 
     # enums
     SignatureMethod,
+    Default,
+    NexusPlus,
     CacheMode,
+    Read,
+    Write,
 
     # hessians
     computeHessianEigenvalues,

@@ -1,3 +1,4 @@
+# Applies Gaussian smoothing in Fourier space at given scale
 struct GaussianFourierFilter <: AbstractScaleFilter
     parameters
 end
