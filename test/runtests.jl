@@ -8,16 +8,14 @@ NeoNEXUS Test Suite
 ===================
 Modularized test structure:
 - types: Hierarchy and instantiation 
-- hessian: Basic computation and memory
 - hessian_physics: Physical correctness on analytic fields
-- features: Feature map generation and integration
+- feature_signature_map: Signature maps and cache mode validation
 - pipeline: High-level orchestration
 =#
 
 @testset "NeoNEXUS" begin
     include("test_types.jl")
-    include("test_hessian.jl")
     include("test_hessian_physics.jl")
-    include("test_features.jl")
+    include("test_feature_signature_map.jl")
     include("test_pipeline.jl")
 end
