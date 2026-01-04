@@ -137,4 +137,9 @@ end
         sigMap = feature2(field, cache, NeoNEXUS.Read)
         @test size(sigMap) == (N, N, N)
     end
+
+@testset "NeoNEXUS" begin
+    include("test_types.jl")
+    include("test_hessian.jl")
+    include("test_pipeline.jl")
 end
