@@ -1,6 +1,6 @@
 struct SheetFeature <: AbstractMorphologicalFeature # Cosmological Walls
     significanceMap::Array{Float32,3} 
-    responseMap::Array{Float32,3}  
+    responseMap::Array{Float32,3}      
     kx::Vector{Float64}
     ky::Vector{Float64}
     kz::Vector{Float64}
@@ -10,11 +10,11 @@ struct SheetFeature <: AbstractMorphologicalFeature # Cosmological Walls
         respMap = zeros(Float32, gridSize)
         new(sigMap, respMap, kx, ky, kz)
     end
-
 end
 
 
 
+# Filaments: detected via λ1 < 0, λ2 < 0
 struct LineFeature <: AbstractMorphologicalFeature  
     significanceMap
     responseMap
@@ -23,6 +23,7 @@ struct LineFeature <: AbstractMorphologicalFeature
     kz::Vector{Float64}
 end
 
+# Clusters/Nodes: detected via λ1, λ2, λ3 < 0
 struct NodeFeature <: AbstractMorphologicalFeature
     significanceMap
     responseMap
@@ -81,7 +82,9 @@ function computeSignature(feature::SheetFeature, cache::HessianEigenCache)
         cond21 = r21 < 1 ? 1f0 : 0f0
         cond31 = r31 < 1 ? 1f0 : 0f0
 
-        # Wall (sheet) signature formula
+        # Wall (sheet) signature:
+        # Strength proportional to |λ1| (normal to wall)
+        # Penalized if other eigenvalues are significant relative to λ1
         S[I] = (1 - r21) * (1 - r31) * abs(λ1) * (mask1 * cond21 * cond31)
 
     end

@@ -20,13 +20,24 @@
     end
 
     @testset "Feature Instantiation" begin
-        sheet = SheetFeature((threshold=0.1, smoothing=2.0))
-        line = LineFeature((threshold=0.2,))
+        # Features now require grid size and wavenumbers
+        gridSize = (4, 4, 4)
+        indices = ones(Float64, 4) # Must match grid dimension (Nx=4)
+        kx = indices; ky = indices; kz = indices
+
+        sheet = SheetFeature(gridSize, kx, ky, kz)
+        
+        # LineFeature uses default constructor currently (requires maps)
+        # Creating dummy maps for testing
+        sigMap = zeros(Float32, gridSize)
+        respMap = zeros(Float32, gridSize)
+        line = LineFeature(sigMap, respMap, kx, ky, kz)
         
         @test sheet isa AbstractFeature
         @test line isa AbstractFeature
-        @test sheet.parameters.threshold == 0.1
-        @test line.parameters.threshold == 0.2
+        
+        # Parameters reference removed in upstream API
+        # @test sheet.parameters.threshold == 0.1
     end
 
     @testset "Signature Methods" begin
