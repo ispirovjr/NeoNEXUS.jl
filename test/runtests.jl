@@ -15,4 +15,5 @@ Modularized test structure:
 @testset "NeoNEXUS" begin
     include("test_hessian_physics.jl")
     include("test_feature_signature_map.jl")
+    include("test_tdd_future.jl")
 end
