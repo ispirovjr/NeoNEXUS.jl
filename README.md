@@ -136,28 +136,4 @@ NeoNEXUS/
 using Pkg
 Pkg.test("NeoNEXUS")
 ```
-
-## Dependencies
-
-- [FFTW.jl](https://github.com/JuliaMath/FFTW.jl) — Fast Fourier transforms
-- [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl) — Stack-allocated matrices for eigenvalue computation
-- [LinearAlgebra](https://docs.julialang.org/en/v1/stdlib/LinearAlgebra/) — Eigenvalue decomposition
-
-## References
-
-- Aragón-Calvo, M. A., et al. (2007). *The multiscale morphology filter: identifying and extracting spatial patterns in the galaxy distribution.* A&A 474, 315–338
-- Cautun, M., et al. (2013). *NEXUS: Tracing the cosmic web connection.* MNRAS 429, 1286–1308
-
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions welcome! Areas of active development:
-
-- [ ] `LineFeature` signature implementation
-- [ ] `NodeFeature` signature implementation
-- [ ] `GaussianFourierFilter` implementation
-- [ ] `NeoNEXUSRunner` multi-scale pipeline
-- [ ] GPU acceleration via CUDA.jl
+ 
