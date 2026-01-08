@@ -3,116 +3,119 @@
 [![Julia](https://img.shields.io/badge/Julia-1.10+-blue.svg)](https://julialang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Modernized and optimized implementation of MMF/NEXUS in Julia** for detecting cosmic web morphological structures in 3D density fields.
+**NeoNEXUS** is a modernized, modular, and high-performance implementation of the **Multi-scale Morphology Filter (MMF)** (later modernized as **NEXUS**) in Julia. It is designed to detect and classify multi-scale morphological structures in 3D density fields, such as the cosmic web's nodes, filaments, and walls.
 
-## Overview
+## Introduction
 
-NeoNEXUS implements the **Multi-scale Morphology Filter (MMF)** algorithm, also known as **NEXUS**, which identifies coherent structures in the cosmic web:
+In the era of "Big Data," scientific datasets are growing exponentially—from terabytes of cosmological simulations to petabytes of astronomical survey data (e.g., Gaia, DESI). Processing this data requires efficient, automated tools.
 
-- **Sheets/Walls** — Planar overdensities where matter flows from voids
-- **Filaments** — Cylindrical structures connecting clusters
-- **Nodes/Clusters** — Spherical regions at intersection points
+**NeoNEXUS** (Network Extraction via Unsupervised Scale-space) addresses this by providing a physically motivated, training-free morphological analysis framework. Originating from medical imaging and adapted for cosmology, it identifies structures based on local geometry (Hessian eigenvalues) rather than simple density thresholds.
 
-The method uses **Hessian matrix eigenvalue analysis** of the density field at multiple smoothing scales to classify local geometry.
+### Key Philosophy
+*   **Modularity**: Decoupled architecture allows users to easily swap filters, feature definitions, and thresholding logic.
+*   **Performance**: Built in Julia, leveraging **multiple dispatch**, **functors**, and a **singleton pattern** for memory-efficient caching of heavy computations (FFTs, Eigenvalues).
+*   **Domain Agnostic**: While built for cosmology, the core logic applies to any scalar field (Medical Imaging, Materials Science).
+
+## Features
+
+*   **Multiscale Analysis**: Detects structures at various smoothing scales to capture hierarchical geometry.
+*   **Morphological Classifiers**:
+    *   **Nodes (Clusters)**: Spherical collapse ($\lambda_1, \lambda_2, \lambda_3 < 0$).
+    *   **Filaments**: Cylindrical collapse ($\lambda_1, \lambda_2 < 0$).
+    *   **Sheets (Walls)**: Planar collapse ($\lambda_1 < 0$).
+*   **Optimized Computation**:
+    *   **HessianEigenCache**: Singleton structure to reuse eigenvalue computations across different features at the same scale/filter setting, preventing redundant FFTs.
+    *   **Explicit Control**: `Read`/`Write` cache modes allow fine-grained memory management.
 
 ## Installation
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/yourusername/NeoNEXUS.jl")
+Pkg.add(url="https://github.com/ispirovjr/NeoNEXUS.jl")
 ```
 
-Or for development:
+For development:
 ```julia
-Pkg.develop(path="/path/to/NeoNEXUS")
+using Pkg
+Pkg.develop(path="path/to/NeoNEXUS")
 ```
 
 ## Quick Start
+Here is a functional example of detecting "Sheet" (Wall) structures in a random noise field.
 
 ```julia
 using NeoNEXUS
 using FFTW
+using Statistics
 
-# Grid setup
+# 1. Setup Grid & K-Space
 N = 64
-kx = ky = kz = fftfreq(N) .* 2π
+L = 1.0
+dx = L / N
+axis = range(-L/2 + dx/2, L/2 - dx/2, length=N)
+kx = ky = kz = fftfreq(N) .* N .* 2π  # Standard circular frequency setup
 
-# Create a sheet (wall) detector
+# 2. Initialize Feature Detector
+# We create a SheetFeature (Wall) detector
 sheet = SheetFeature((N, N, N), kx, ky, kz)
 
-# Load or generate your 3D density field
-densityField = randn(Float32, N, N, N)
+# 3. Create/Load Data
+# Using random noise for demonstration
+density_field = randn(Float32, N, N, N)
 
-# Compute signature map
-signatureMap = sheet(densityField)
+# 4. Compute Significance Map
+# properties(field) calls the functor which handles:
+# - Hessian computation (using FFTs)
+# - Eigenvalue decomposition
+# - Signature calculation based on geometry
+signature_map = sheet(density_field)
 
-# The feature's significanceMap accumulates max across scales
-println("Max sheet significance: ", maximum(sheet.significanceMap))
+println("Max sheet signature: ", maximum(signature_map))
+
+# 5. Access Results
+# The feature object itself stores accumulated significance across scales if run in a loop
+# (For a single scale, it matches the return value)
+println("Stored significance max: ", maximum(sheet.significanceMap))
 ```
 
-## How It Works
+## Architecture & Methodology
 
-### 1. Hessian Eigenvalue Computation
+NeoNEXUS reimagines the classic MMF/NEXUS pipeline with software engineering best practices.
 
-For a scalar field δ(x), compute the Hessian:
+### Workflow
+The analysis follows a two-stage loop process:
 
-```
-H_ij = ∂²δ / ∂x_i ∂x_j
-```
+1.  **Signature Computation Loop**:
+    *   Iterate over **Scales** ($R_1, R_2, \dots$).
+    *   Apply **Filter** (e.g., Gaussian) to the density field.
+    *   Compute **Hessian Eigenvalues** ($\lambda_1 \le \lambda_2 \le \lambda_3$).
+    *   Evaluate **Feature Signatures** (Response functions) for all requested features (Nodes, Filaments, Sheets).
+    *   *Optimization*: The Hessian is computed once per scale and cached (`HessianEigenCache`) for all features.
 
-Using Fourier derivatives: `H_ij(k) = -k_i k_j δ̂(k)`
+2.  **Thresholding Loop**:
+    *   After aggregating signatures across scales (max-pooling), a global noise threshold is applied.
+    *   Features are masked hierarchically (e.g., Filaments mask Nodes) to ensure clean segmentation.
 
-The eigenvalues λ₁ ≤ λ₂ ≤ λ₃ encode local curvature.
+### Components
+*   **Features (`AbstractMorphologicalFeature`)**: Defines the geometric signature (e.g., `SheetFeature`, `LineFeature`, `NodeFeature`). They act as functors `feature(field)` to compute maps.
+*   **Filters (`AbstractScalarFilter`)**: Handles smoothing in Fourier space (e.g., `GaussianFourierFilter`).
+*   **Hessian**: Core module for computing derivatives via FFTs. Uses explicit caching strategies (`Read`, `Write`, `None`) to manage memory.
 
-### 2. Morphological Classification
+## Use Cases
 
-| Feature | Eigenvalue Signature |
-|---------|---------------------|
-| Sheet   | λ₁ < 0, \|λ₂/λ₁\| < 1, \|λ₃/λ₁\| < 1 |
-| Filament| λ₁ < 0, λ₂ < 0 |
-| Node    | λ₁ < 0, λ₂ < 0, λ₃ < 0 |
+Beyond standard Large Scale Structure (LSS) analysis, NeoNEXUS is applicable in:
 
-### 3. Multi-scale Analysis
+### Astrophysics
+*   **Stellar Streams**: Detecting linear structures in galactic density fields for Galactic Archaeology.
+*   **Phase Space Analysis**: Identifying structures in HR Diagrams or the Fundamental Plane of elliptical galaxies.
 
-Apply Gaussian smoothing at multiple scales, compute signatures at each, and aggregate via voxel-wise maximum.
+### Engineering & Materials
+*   **Fracture Detection**: Inverting the density field allows detection of "negative" density features like cracks or voids in materials.
+*   **Microstructure Analysis**: Identifying patterns in alloy compositions.
 
-## API Reference
-
-### Features
-
-```julia
-# Sheet detector (walls)
-sheet = SheetFeature(gridSize::Tuple, kx, ky, kz)
-
-# Filament detector (in development)
-line = LineFeature(sigMap, respMap, kx, ky, kz)
-
-# Node detector (in development)
-node = NodeFeature(sigMap, respMap, kx, ky, kz)
-```
-
-### Hessian Computation
-
-```julia
-# Compute eigenvalues (allocating)
-cache = computeHessianEigenvalues(field, kx, ky, kz)
-
-# Compute eigenvalues (in-place)
-computeHessianEigenvalues!(field, kx, ky, kz, cache)
-```
-
-### Cache Modes
-
-```julia
-# Direct computation (no caching)
-result = feature(field)
-
-# Read from pre-computed cache
-result = feature(field, cache, Read)
-
-# Compute and write to cache
-result = feature(field, cache, Write)
-```
+### Medicine
+*   **Vascular Mapping**: Tracing blood vessels (tubular/filamentary structures).
+*   **Tumor Detection**: Identifying nodular growths in 3D scans.
 
 ## Project Structure
 
@@ -120,20 +123,11 @@ result = feature(field, cache, Write)
 NeoNEXUS/
 ├── src/
 │   ├── NeoNEXUS.jl    # Module entry point
-│   ├── Types.jl       # Abstract types and enums
-│   ├── Hessian.jl     # Eigenvalue computation
-│   ├── Features.jl    # Morphological feature detectors
-│   ├── Filters.jl     # Scale-space filters
-│   └── Runner.jl      # Pipeline orchestrator
+│   ├── Types.jl       # Abstract types & Enums
+│   ├── Hessian.jl     # FFT-based Hessian & Eigenvalue computation
+│   ├── Features.jl    # Sheet, Line, Node feature definitions
+│   ├── Filters.jl     # Scale-space filters (Gaussian)
+│   └── Runner.jl      # Pipeline orchestration logic
 └── test/
-    ├── runtests.jl    # Test entry point
-    └── test_*.jl      # Modular test files
+    └── testTdd.jl     # Unit tests demonstrating usage
 ```
-
-## Running Tests
-
-```julia
-using Pkg
-Pkg.test("NeoNEXUS")
-```
- 
