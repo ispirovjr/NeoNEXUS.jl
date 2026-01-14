@@ -9,6 +9,9 @@ NeoNEXUS Test Suite
 Modularized test structure:
 - Hessians: Physical correctness on analytic fields
 - FeatureSignatureMap: Signature maps and cache mode validation
+- Thresholds: Thresholding functions
+- Filters: Filter functions
+- TDD: for test driven development
 - pipeline: High-level orchestration
 =#
 
@@ -18,4 +21,5 @@ Modularized test structure:
     include("testFilters.jl")
     include("testTdd.jl")
     include("testThresholds.jl")
+    include("testConnectedComponents.jl")
 end

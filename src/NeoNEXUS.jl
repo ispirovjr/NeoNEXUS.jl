@@ -8,6 +8,7 @@ include("Hessian.jl")
 include("Features.jl")
 include("Filters.jl")
 include("Thresholds.jl")
+include("ConnectedComponents.jl")
 include("Runner.jl")
 
 export
@@ -38,8 +39,28 @@ export
     flatThreshold!,
     volumeThreshold!,
     massThreshold!,
+    massCutoffThreshold!,
+    thresholdedAverageDensity!,
+    averageDensityThreshold!,
+    calculateΔM²,
+    deltaMSquaredThreshold!,
+    maskSignatureMap!,
+
+
+    # connected components
+    ConnectedComponent,
+    findConnectedComponents,
+    labelConnectedComponents,
+    componentAverageDensity,
+    componentDensityThreshold!,
+
+    # hessian cache (for advanced usage)
+    HessianEigenCache,
 
     # orchestration
-    NeoNEXUSRunner
+    MMFClassic,
+    NEXUSPlus,
+    run
 
 end
+

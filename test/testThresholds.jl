@@ -4,7 +4,7 @@
 @testset "Threshold Functions" begin
 
     # Create a density field with a Gaussian cluster centered at (cx, cy, cz)
-    function create_cluster_density(N, cx, cy, cz; σ=2.0, amplitude=10.0, background=1.0)
+    function createClusterDensity(N, cx, cy, cz; σ=2.0, amplitude=10.0, background=1.0)
         density = fill(Float32(background), N, N, N)
         for k in 1:N, j in 1:N, i in 1:N
             r² = (i - cx)^2 + (j - cy)^2 + (k - cz)^2
@@ -22,7 +22,7 @@
 
     @testset "flatThreshold! with cluster density" begin
         # Create density with cluster at center
-        density = create_cluster_density(N, cx, cy, cz)
+        density = createClusterDensity(N, cx, cy, cz)
 
         # Compute node signature (detects spherical overdensities)
         node = NodeFeature((N, N, N), kx, ky, kz)
@@ -43,7 +43,7 @@
 
     @testset "volumeThreshold! with cluster density" begin
         # Create density with cluster at center
-        density = create_cluster_density(N, cx, cy, cz)
+        density = createClusterDensity(N, cx, cy, cz)
 
         # Compute node signature
         node = NodeFeature((N, N, N), kx, ky, kz)
@@ -56,12 +56,12 @@
         @test node.thresholdMap[cx, cy, cz] == 1.0f0
 
         # Count of passing voxels should be approximately 30% of non-zero voxels
-        nonzero_count = count(x -> x > 0, sigMap)
-        if nonzero_count > 0
-            expected_count = ceil(Int, 0.3 * nonzero_count)
-            actual_count = Int(sum(node.thresholdMap))
+        nonzeroCount = count(x -> x > 0, sigMap)
+        if nonzeroCount > 0
+            expectedCount = ceil(Int, 0.3 * nonzeroCount)
+            actualCount = Int(sum(node.thresholdMap))
             # Allow some tolerance due to discrete nature
-            @test actual_count >= expected_count - 1
+            @test actualCount >= expectedCount - 1
         end
     end
 
@@ -85,7 +85,7 @@
 
     @testset "massThreshold! with cluster density" begin
         # Create density with cluster at center
-        density = create_cluster_density(N, cx, cy, cz)
+        density = createClusterDensity(N, cx, cy, cz)
 
         # Compute node signature
         node = NodeFeature((N, N, N), kx, ky, kz)
@@ -122,7 +122,7 @@
 
     @testset "Threshold comparison with cluster" begin
         # Create density with strong cluster
-        density = create_cluster_density(N, cx, cy, cz, amplitude=20.0)
+        density = createClusterDensity(N, cx, cy, cz, amplitude=20.0)
 
         # Compute signatures for three separate features
         node1 = NodeFeature((N, N, N), kx, ky, kz)
@@ -146,6 +146,159 @@
         # Mass threshold should be more selective or equal to volume threshold
         # (mass-weighting concentrates on high-density regions)
         @test sum(node3.thresholdMap) <= sum(node2.thresholdMap)
+    end
+
+    @testset "massCutoffThreshold! with cluster density" begin
+        # Create density with cluster at center (background=1.0, peak=11.0)
+        density = createClusterDensity(N, cx, cy, cz)
+
+        # Compute node signature
+        node = NodeFeature((N, N, N), kx, ky, kz)
+        sigMap = node(density)
+
+        # Apply density cutoff at 5.0 (should include cluster center but not background)
+        thresholdVal = massCutoffThreshold!(node, density, 5.0f0)
+
+        @test thresholdVal == 5.0f0
+
+        # The cluster center has high density (>5) and should pass
+        @test node.thresholdMap[cx, cy, cz] == 1.0f0
+
+        # Background voxels (density=1.0) should not pass even if they have signature
+        # Check a corner voxel far from cluster
+        @test node.thresholdMap[1, 1, 1] == 0.0f0
+    end
+
+    @testset "massCutoffThreshold! edge cases" begin
+        node = NodeFeature((N, N, N), kx, ky, kz)
+        density = fill(10.0f0, N, N, N)  # All high density
+
+        # All zeros signature → should return all zeros even if density is high
+        fill!(node.significanceMap, 0f0)
+        thresholdVal = massCutoffThreshold!(node, density, 5.0f0)
+
+        @test thresholdVal == 5.0f0
+        @test sum(node.thresholdMap) == 0f0
+
+        # Non-zero sig but low density → should not pass
+        node.significanceMap[cx, cy, cz] = 1.0f0
+        density[cx, cy, cz] = 2.0f0  # Below cutoff of 5
+        thresholdVal = massCutoffThreshold!(node, density, 5.0f0)
+
+        @test node.thresholdMap[cx, cy, cz] == 0.0f0
+
+        # Non-zero sig AND high density → should pass
+        density[cx, cy, cz] = 10.0f0  # Above cutoff
+        thresholdVal = massCutoffThreshold!(node, density, 5.0f0)
+
+        @test node.thresholdMap[cx, cy, cz] == 1.0f0
+    end
+
+    @testset "thresholdedAverageDensity!" begin
+        node = NodeFeature((N, N, N), kx, ky, kz)
+        density = fill(10.0f0, N, N, N)
+
+        # No thresholded voxels → returns 0
+        fill!(node.thresholdMap, 0f0)
+        @test thresholdedAverageDensity!(node, density) == 0f0
+
+        # Mark some voxels with known density
+        node.thresholdMap[1, 1, 1] = 1.0f0
+        density[1, 1, 1] = 100.0f0
+        node.thresholdMap[2, 2, 2] = 1.0f0
+        density[2, 2, 2] = 200.0f0
+
+        # Average should be (100 + 200) / 2 = 150
+        @test thresholdedAverageDensity!(node, density) == 150.0f0
+    end
+
+    @testset "averageDensityThreshold!" begin
+        node = NodeFeature((N, N, N), kx, ky, kz)
+        density = fill(10.0f0, N, N, N)
+
+        # Setup: mark some voxels
+        fill!(node.thresholdMap, 0f0)
+        node.thresholdMap[1, 1, 1] = 1.0f0
+        density[1, 1, 1] = 100.0f0
+        node.thresholdMap[2, 2, 2] = 1.0f0
+        density[2, 2, 2] = 200.0f0
+        # Average = 150
+
+        # Test: requirement met
+        result = averageDensityThreshold!(node, density, 100.0f0)
+        @test result[1] == 150.0f0  # Average density
+        @test result[2] == true     # Meets requirement
+        @test sum(node.thresholdMap) == 2.0f0  # Not cleared
+
+        # Test: requirement not met - should clear threshold map
+        result = averageDensityThreshold!(node, density, 200.0f0)
+        @test result[1] == 150.0f0  # Average density
+        @test result[2] == false    # Does not meet requirement
+        @test sum(node.thresholdMap) == 0.0f0  # Cleared
+    end
+
+
+    @testset "calculateΔM²" begin
+        # Create a simple scenario: 
+        # A uniform density field (ρ=1)
+        # Signatures that increase linearly with x: S(x) = x
+        node = NodeFeature((N, N, N), kx, ky, kz)
+        density = fill(1.0f0, N, N, N)
+
+        for i in 1:N, j in 1:N, k in 1:N
+            node.significanceMap[i, j, k] = Float32(i)
+        end
+
+        # S ranges from 1 to 16
+        # Mass(> S) roughly proportional to (N - S + 1) * N * N
+        # This is a bit complex to predict exactly due to log bins, 
+        # but we can check properties.
+
+        nBins = 10
+        logS, dM2 = calculateΔM²(node, density, nBins)
+
+        @test length(logS) == nBins
+        @test length(dM2) == nBins
+
+        # dM2 should be non-negative
+        @test all(dM2 .>= 0)
+
+        # Test with zero signatures - should return empty
+        fill!(node.significanceMap, 0f0)
+        logS_empty, dM2_empty = calculateΔM²(node, density)
+        @test isempty(logS_empty)
+        @test isempty(dM2_empty)
+
+        # Test with constant signature - should return empty (min ≈ max)
+        fill!(node.significanceMap, 5.0f0)
+        logS_const, dM2_const = calculateΔM²(node, density)
+        @test isempty(logS_const)
+        @test isempty(dM2_const)
+    end
+
+
+    @testset "deltaMSquaredThreshold!" begin
+        # Create abstract feature with fake signature and density
+        node = NodeFeature((N, N, N), kx, ky, kz)
+        density = fill(1.0f0, N, N, N)
+
+        # Create a peak in S at value 10
+        # For simplicity, we just need `calculateΔM²` to return something valid
+        # Let's fill with ranom data that has range
+        for i in eachindex(node.significanceMap)
+            node.significanceMap[i] = Float32(i)
+        end
+        # Range 1 to 4096
+
+        # Should run without error and return a positive threshold
+        thresholdVal = deltaMSquaredThreshold!(node, density)
+        @test thresholdVal > 0
+        @test sum(node.thresholdMap) > 0 # Some voxels should pass
+
+        # Test empty case
+        fill!(node.significanceMap, 0f0)
+        thresholdVal = deltaMSquaredThreshold!(node, density)
+        @test thresholdVal == 0f0
     end
 
 end

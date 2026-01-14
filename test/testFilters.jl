@@ -69,4 +69,15 @@
         @test maximum(logFiltered) < 100.0f0  # Spike is reduced
         @test minimum(logFiltered) > 1.0f0   # No zeros introduced
     end
+
+
+    @testset "Gaussian Fourier Filter" begin
+        filter = GaussianFourierFilter((N, N, N))
+        field = randn(Float32, N, N, N)
+
+        # Filter is now implemented - test it works
+        filtered = filter(field, 2.0)
+        @test size(filtered) == (N, N, N)
+    end
+
 end
