@@ -24,12 +24,10 @@ export
     NodeFeature,
 
     # enums
-    SignatureMethod,
-    Default,
-    NexusPlus,
     CacheMode,
     Read,
     Write,
+    None,
 
     # hessians
     computeHessianEigenvalues,
@@ -40,11 +38,14 @@ export
     volumeThreshold!,
     massThreshold!,
     massCutoffThreshold!,
-    thresholdedAverageDensity!,
+    thresholdedAverageDensity,
     averageDensityThreshold!,
     calculateΔM²,
     deltaMSquaredThreshold!,
+    componentErosionPercentileThreshold!,
+    componentErosionPlateauThreshold!,
     maskSignatureMap!,
+    findComponentPercentageThreshold!,
 
 
     # connected components
@@ -53,6 +54,8 @@ export
     labelConnectedComponents,
     componentAverageDensity,
     componentDensityThreshold!,
+    pruneSmallComponents!,
+    pruneSmallMassComponents!,
 
     # hessian cache (for advanced usage)
     HessianEigenCache,

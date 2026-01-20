@@ -4,11 +4,6 @@ abstract type AbstractFeature end
 abstract type AbstractMorphologicalFeature <: AbstractFeature end  # Sheet, Line, Blob features
 
 # Enums
-@enum SignatureMethod begin
-    Default
-    NexusPlus
-end
-
 @enum CacheMode begin
     Read
     Write

@@ -7,12 +7,12 @@ A connected component representing a contiguous region of non-zero signature vox
 # Fields
 - `id::Int` — Unique identifier for this component
 - `voxels::Vector{CartesianIndex{3}}` — Indices of voxels in this component
-- `totalSignature::Float32` — Sum of signature values in this component
+- `maxSignature::Float32` — Maximum signature value in this component
 """
 struct ConnectedComponent
     id::Int
     voxels::Vector{CartesianIndex{3}}
-    totalSignature::Float32
+    maxSignature::Float32
 end
 
 # Convenience accessors
@@ -25,10 +25,10 @@ Find all connected components (contiguous regions of non-zero signature) in a 3D
 Uses 6-connectivity (face-adjacent voxels only, not diagonal).
 
 # Arguments
-- `signatureMap::AbstractArray{<:Real,3}` — 3D signature field
+- `signatureMap`: 3D signature field
 
 # Returns
-- `Vector{ConnectedComponent}` — List of connected components, sorted in descending order by total signature 
+- `Vector{ConnectedComponent}`: List of connected components, sorted in descending order by maximum signature 
 """
 function findConnectedComponents(signatureMap::AbstractArray{<:Real,3})
     dims = size(signatureMap)
@@ -53,7 +53,7 @@ function findConnectedComponents(signatureMap::AbstractArray{<:Real,3})
         # Start new component with BFS
         componentId += 1
         voxels = CartesianIndex{3}[]
-        totalSig = 0f0
+        maxSig = 0f0
 
         queue = [I]
         visited[I] = true
@@ -61,7 +61,10 @@ function findConnectedComponents(signatureMap::AbstractArray{<:Real,3})
         while !isempty(queue)
             current = popfirst!(queue)
             push!(voxels, current)
-            totalSig += Float32(signatureMap[current])
+            sig = Float32(signatureMap[current])
+            if sig > maxSig
+                maxSig = sig
+            end
 
             # Check all 6-connected neighbors
             for offset in offsets
@@ -77,11 +80,11 @@ function findConnectedComponents(signatureMap::AbstractArray{<:Real,3})
             end
         end
 
-        push!(components, ConnectedComponent(componentId, voxels, totalSig))
+        push!(components, ConnectedComponent(componentId, voxels, maxSig))
     end
 
-    # Sort by total signature descending (most significant first)
-    sort!(components, by=cc -> cc.totalSignature, rev=true)
+    # Sort by maximum signature descending (most significant first)
+    sort!(components, by=cc -> cc.maxSignature, rev=true)
 
     return components
 end
@@ -91,8 +94,8 @@ end
 Create a label map where each voxel is assigned its component ID (0 for background).
 
 # Returns
-- `labelMap::Array{Int32,3}` — 3D array of component IDs
-- `components::Vector{ConnectedComponent}` — List of components
+- `labelMap::Array{Int32,3}`: 3D array of component IDs
+- `components::Vector{ConnectedComponent}`: List of components
 """
 function labelConnectedComponents(signatureMap::AbstractArray{<:Real,3})
     components = findConnectedComponents(signatureMap)
@@ -124,54 +127,88 @@ end
 
 
 """
-Threshold based on connected component average density.
-
-This function:
-1. Finds connected components in the signature field
-2. Computes average density per component (total mass / volume)
-3. Keeps all components where average density ≥ densityCutoff
-4. Marks voxels of qualifying components in thresholdMap
-
-# Arguments
-- `feature::AbstractMorphologicalFeature` — Feature with significanceMap to threshold
-- `densityField::AbstractArray{<:Real,3}` — Density field for computing component mass
-- `densityCutoff::Real` — Minimum average density for a component to qualify
+Remove small connected components from a signature map by setting their values to zero.
 
 # Returns
-- Tuple of (number of qualifying components, total components)
+- Tuple of (nKept, nPruned, nVoxelsPruned)
 """
-function componentDensityThreshold!(
-    feature::AbstractMorphologicalFeature,
-    densityField::AbstractArray{<:Real,3},
-    densityCutoff::Real
-)
-    sigMap = feature.significanceMap
-    thresMap = feature.thresholdMap
+function pruneSmallComponents!(signatureMap::AbstractArray{<:Real,3}, minVoxels::Int)
+    components = findConnectedComponents(signatureMap)
 
-    @assert size(sigMap) == size(densityField) "Signature and density fields must have same size"
-
-    # Find connected components
-    components = findConnectedComponents(sigMap)
-
-    if isempty(components)
-        fill!(thresMap, 0f0)
-        return (0, 0)
-    end
-
-    # Mark voxels of components that meet the density cutoff
-    fill!(thresMap, 0f0)
-    nQualifying = 0
+    nKept = 0
+    nPruned = 0
+    nVoxelsPruned = 0
 
     for cc in components
-        avgDensity = componentAverageDensity(cc, densityField)
-        if avgDensity >= densityCutoff
-            nQualifying += 1
+        if length(cc.voxels) < minVoxels
+            # Set all voxels in this component to zero
             for voxel in cc.voxels
-                thresMap[voxel] = 1f0
+                signatureMap[voxel] = 0
             end
+            nPruned += 1
+            nVoxelsPruned += length(cc.voxels)
+        else
+            nKept += 1
         end
     end
 
-    return (nQualifying, length(components))
+    return (nKept, nPruned, nVoxelsPruned)
 end
+
+
+"""
+Remove small connected components from a feature's significance map.
+Convenience method that operates on a feature's significanceMap.
+
+# Returns
+- Tuple of (nKept, nPruned, nVoxelsPruned)
+"""
+
+"""
+Remove connected components from a signature map that have a total mass less than `minMass`.
+Mass is calculated using the provided `densityField`.
+
+# Arguments
+- `signatureMap::AbstractArray{<:Real,3}`: 3D signature field (modified in-place)
+- `densityField::AbstractArray{<:Real,3}`: 3D density field for mass calculation
+- `minMass::Real`: Minimum total mass for a component to be kept
+
+# Returns
+- Tuple of (nKept, nPruned, nVoxelsPruned, massPruned)
+"""
+function pruneSmallMassComponents!(
+    signatureMap::AbstractArray{<:Real,3},
+    densityField::AbstractArray{<:Real,3},
+    minMass::Real
+)
+    components = findConnectedComponents(signatureMap)
+
+    nKept = 0
+    nPruned = 0
+    nVoxelsPruned = 0
+    massPruned = 0.0
+
+    @inbounds for cc in components
+        currentMass = 0.0
+        for idx in cc.voxels
+            currentMass += densityField[idx]
+        end
+
+        if currentMass < minMass
+            signatureMap[cc.voxels] .= 0
+            nPruned += 1
+            nVoxelsPruned += length(cc.voxels)
+            massPruned += currentMass
+        else
+            nKept += 1
+        end
+    end
+
+    return (nKept, nPruned, nVoxelsPruned, massPruned)
+end
+
+function pruneSmallMassComponents!(feature::AbstractMorphologicalFeature, densityField::AbstractArray{<:Real,3}, minMass::Real)
+    return pruneSmallMassComponents!(feature.significanceMap, densityField, minMass)
+end
+
 

@@ -1,17 +1,11 @@
 # Thresholding functions for morphological feature classification
 # Each function operates on feature.significanceMap and populates feature.thresholdMap
+# All functions return the threshold value (if a universal one is found)
 
 
 """
 Apply a flat (hard) threshold to the feature's significance map.
 Voxels with signature ≥ threshold are marked as 1.0 in thresholdMap, otherwise 0.0.
-
-# Arguments
-- `feature::AbstractMorphologicalFeature` — Feature with significanceMap to threshold
-- `threshold::Real` — Cutoff value; voxels ≥ this value pass
-
-# Returns
-- The computed threshold value (same as input)
 """
 function flatThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -32,13 +26,6 @@ end
 Find threshold such that `fraction` of non-zero voxels pass.
 Given N voxels with signature > 0, we find threshold T such that
 the number of voxels with signature ≥ T is approximately `fraction * N`.
-
-# Arguments
-- `feature::AbstractMorphologicalFeature` — Feature with significanceMap to threshold
-- `fraction::Real` — Fraction of non-zero voxels to retain (default 0.5 = 50%)
-
-# Returns
-- The computed threshold value
 """
 function volumeThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -85,14 +72,6 @@ end
 Find threshold such that voxels passing the threshold contain `fraction` of total mass.
 The signature determines which voxels pass (sig ≥ threshold), and mass = density.
 We find threshold T such that: sum(thresholdMap .* density) / sum(density) ≈ fraction
-
-# Arguments
-- `feature::AbstractMorphologicalFeature` — Feature with significanceMap to threshold
-- `densityField::AbstractArray{<:Real,3}` — Density field (mass per voxel)
-- `fraction::Real` — Fraction of total mass to retain (default 0.5 = 50%)
-
-# Returns
-- The computed threshold value
 """
 function massThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -160,11 +139,6 @@ Apply a density-based threshold: voxels pass if they have non-zero signature
 AND density ≥ densityCutoff.
 
 
-# Arguments
-- `feature::AbstractMorphologicalFeature` — Feature with significanceMap to threshold
-- `densityField::AbstractArray{<:Real,3}` — Density field
-- `densityCutoff::Real` — Minimum density required for voxel to pass
-
 """
 function massCutoffThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -191,7 +165,7 @@ Average = sum(density where thresholdMap == 1) / count(thresholdMap == 1)
 
 Returns 0 if no voxels are thresholded.
 """
-function thresholdedAverageDensity!(
+function thresholdedAverageDensity(
     feature::AbstractMorphologicalFeature,
     densityField::AbstractArray{<:Real,3}
 )
@@ -211,52 +185,68 @@ function thresholdedAverageDensity!(
 end
 
 
+
+
 """
-Validate that the already-thresholded voxels have an average density ≥ minAverageDensity.
+Find the signature threshold that achieves a target average density.
 
-This function does NOT modify the thresholdMap. It only checks if the current thresholded
-region meets the minimum average density requirement.
-
-Use this after applying another threshold (e.g., volumeThreshold!, massThreshold!) to 
-verify the resulting selection has sufficient average density.
-
-# Arguments
-- `feature::AbstractMorphologicalFeature` — Feature with already-populated thresholdMap
-- `densityField::AbstractArray{<:Real,3}` — Density field
-- `minAverageDensity::Real` — Minimum required average density
-
-# Returns
-- Tuple of (averageDensity, meetsRequirement::Bool)
+Searches for the lowest signature threshold such that the average density
+of thresholded voxels is ≥ targetDensity.
 """
 function averageDensityThreshold!(
     feature::AbstractMorphologicalFeature,
     densityField::AbstractArray{<:Real,3},
-    minAverageDensity::Real
+    targetDensity::Real,
+    nBins::Int=100
 )
-    avgDensity = thresholdedAverageDensity!(feature, densityField)
-    meetsRequirement = avgDensity >= minAverageDensity
+    sigMap = feature.significanceMap
 
-    # If requirement not met, clear the threshold map
-    if !meetsRequirement
+    # Get valid positive signatures
+    validMask = sigMap .> 0
+    nValid = count(validMask)
+
+    if nValid == 0
         fill!(feature.thresholdMap, 0f0)
+        return 0f0
     end
 
-    return (avgDensity, meetsRequirement)
+    # Extract signature and density pairs
+    flatSig = vec(sigMap)
+    flatDen = vec(densityField)
+
+    posIndices = findall(x -> x > 0, flatSig)
+
+    # Sort by signature descending
+    sortedIdx = sortperm(flatSig[posIndices], rev=true)
+    sortedSig = flatSig[posIndices][sortedIdx]
+    sortedDen = flatDen[posIndices][sortedIdx]
+
+    cumMass = cumsum(sortedDen)
+
+    # Start search from beginning (highest signatures)
+    optimalIdx = 1
+    for i in 1:length(sortedSig)
+        avgDensity = cumMass[i] / i
+        if avgDensity >= targetDensity
+            optimalIdx = i
+        else
+            # Average density dropped below target, use previous
+            break
+        end
+    end
+
+    # Threshold is the signature value at optimalIdx
+    threshold = sortedSig[optimalIdx]
+
+    # Apply the threshold
+    flatThreshold!(feature, threshold)
+
+    return Float32(threshold)
 end
 
 """
 Calculate the change in squared mass with respect to logarithmic signature:
 ΔM² = |d(M²) / d(log S)|
-
-# Algorithm
-1. Bins the signature range logarithmically.
-2. For each bin edge S_i, calculates the total mass M_i of all voxels where signature > S_i.
-3. Computes the discrete derivative |(M_{i+1}² - M_i²) / (log(S_{i+1}) - log(S_i))|.
-
-# Arguments
-- `feature::AbstractMorphologicalFeature`: Feature with `significanceMap`.
-- `densityField::AbstractArray`: Density field for mass calculation.
-- `nBins::Int`: Number of logarithmic bins (default: 100).
 
 # Returns
 - `logSCenters`: Log10 signature values at bin centers.
@@ -291,17 +281,12 @@ function calculateΔM²(
 
     # Calculate cumulative mass for each threshold
     # M(> S_i)
-    # Optimized approach:
-    # 1. Flatten signature and density
-    # 2. Sort by signature
-    # 3. Compute reverse cumulative sum of density (mass)
-    # 4. Interpolate mass at bin edges
 
     # Flatten and sort
     flatSig = vec(sigMap)
     flatDen = vec(densityField)
 
-    # Filter out <= 0 signatures if we only care about log space
+    # Filter out <= 0 signatures (somewhat redundant but safe, remove if performance is critical)
     posIndices = findall(x -> x > 0, flatSig)
     sortedIdx = sortperm(flatSig[posIndices])
 
@@ -356,13 +341,7 @@ end
 """
 Apply a flat threshold at the signature value that maximizes ΔM² = |d(M²) / d(log S)|.
 
-# Arguments
-- `feature::AbstractMorphologicalFeature`
-- `densityField::AbstractArray`
-- `nBins::Int`: Number of bins for peak detection (default: 100)
-
-# Returns
-- `thresholdVal`: The signature threshold value used.
+For more details on procedure see calculateΔM²(feature, densityField, nBins)
 """
 function deltaMSquaredThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -389,14 +368,9 @@ end
 Mask `feature.significanceMap` where `mask.thresholdMap > 0`.
 Sets masked voxels' signature to 0 (before thresholding).
 
-Use this to implement hierarchical feature masking:
-- First threshold the higher-priority feature (e.g., nodes)
-- Then mask lower-priority features by the thresholded regions
-- Finally threshold the masked feature
-
 # Arguments
-- `feature::AbstractMorphologicalFeature` — Feature whose significanceMap will be masked
-- `mask::AbstractMorphologicalFeature` — Feature whose thresholdMap defines the mask
+- feature::AbstractMorphologicalFeature: Feature whose significanceMap will be masked
+- mask::AbstractMorphologicalFeature: Feature whose thresholdMap defines the mask
 
 # Returns
 - Number of voxels masked
@@ -412,3 +386,308 @@ function maskSignatureMap!(feature::AbstractMorphologicalFeature, mask::Abstract
     return nMasked
 end
 
+
+"""
+Find the signature threshold such that a specific percentage of connected components
+meet a density requirement. Generates a threshold map where voxels belonging to
+components that meet the density requirement are set to the threshold value. 
+
+excludeEmpty: Components with no remaining voxels at a given 
+threshold are excluded from the total count. If false, they count as "failing".
+"""
+function findComponentPercentageThreshold!(
+    feature::AbstractMorphologicalFeature,
+    densityField::AbstractArray{<:Real,3},
+    densityRequirement::Real,
+    targetPercentage::Real;
+    nBins::Int=100,
+    excludeEmpty::Bool=true
+)
+    sigMap = feature.significanceMap
+
+    # 1. Identify connected components on the base mask (sig > 0)
+    components = findConnectedComponents(sigMap)
+    nComponents = length(components)
+
+    if nComponents == 0
+        fill!(feature.thresholdMap, 0f0)
+        return 0f0
+    end
+
+    # 2. Define candidate thresholds
+    validSigs = filter(x -> x > 0, sigMap)
+    if isempty(validSigs)
+        fill!(feature.thresholdMap, 0f0)
+        return 0f0
+    end
+
+    minSig, maxSig = extrema(validSigs)
+
+    # If min approx max, just return min
+    if minSig ≈ maxSig
+        flatThreshold!(feature, minSig)
+        return minSig
+    end
+
+    # Create nBins candidates
+    thresholds = range(minSig, maxSig, length=nBins)
+
+    bestThreshold = 0f0
+    minDiff = Inf
+
+    # Pre-calculate component voxel indices and densities for speed
+    # componentData[i] is a vector of (signature, density) for component i
+    componentData = Vector{Vector{Tuple{Float32,Float32}}}(undef, nComponents)
+
+    @inbounds for (i, cc) in enumerate(components)
+        data = Vector{Tuple{Float32,Float32}}(undef, length(cc.voxels))
+        for (j, voxel) in enumerate(cc.voxels)
+            data[j] = (Float32(sigMap[voxel]), Float32(densityField[voxel]))
+        end
+        componentData[i] = data
+    end
+
+    # 3. Iterate thresholds
+    prevDiff = Inf
+    for thresh in thresholds
+        nPassing = 0
+        nActive = 0  # Components with at least one voxel at this threshold
+
+        for data in componentData
+            # Calculate average density for this component at this threshold
+            currentMass = 0f0
+            currentCount = 0
+
+            for (sig, rho) in data
+                if sig >= thresh
+                    currentMass += rho
+                    currentCount += 1
+                end
+            end
+
+            # Handle component based on excludeEmpty setting
+            if currentCount > 0
+                nActive += 1
+                avgDen = currentMass / currentCount
+                if avgDen >= densityRequirement
+                    nPassing += 1
+                end
+            elseif !excludeEmpty
+                # Count empty components as failing
+                nActive += 1
+            end
+        end
+
+        # Skip if no active components at this threshold
+        if nActive == 0
+            continue
+        end
+
+        fraction = nPassing / nActive
+        diff = abs(fraction - targetPercentage)
+
+        if diff < minDiff
+            minDiff = diff
+            bestThreshold = thresh
+        elseif diff > prevDiff
+            # Diff started increasing, no point in continuing
+            break
+        end
+
+        prevDiff = diff
+    end
+
+    # 4. Apply best threshold
+    flatThreshold!(feature, bestThreshold)
+
+    return Float32(bestThreshold)
+end
+
+
+"""
+Threshold based on connected component average density.
+
+Finds connected components and average density per component (total mass / volume).
+Keeps all components where average density ≥ densityCutoff.
+Marks voxels of qualifying components in thresholdMap.
+
+# Returns
+- Tuple of (number of qualifying components, total components)
+"""
+function componentDensityThreshold!(
+    feature::AbstractMorphologicalFeature,
+    densityField::AbstractArray{<:Real,3},
+    densityCutoff::Real
+)
+    sigMap = feature.significanceMap
+    thresMap = feature.thresholdMap
+
+    @assert size(sigMap) == size(densityField) "Signature and density fields must have same size"
+
+    # Find connected components
+    components = findConnectedComponents(sigMap)
+
+    if isempty(components)
+        fill!(thresMap, 0f0)
+        return (0, 0)
+    end
+
+    # Mark voxels of components that meet the density cutoff
+    fill!(thresMap, 0f0)
+    nQualifying = 0
+
+    for cc in components
+        avgDensity = componentAverageDensity(cc, densityField)
+        if avgDensity >= densityCutoff
+            nQualifying += 1
+            for voxel in cc.voxels
+                thresMap[voxel] = 1f0
+            end
+        end
+    end
+
+    return (nQualifying, length(components))
+end
+
+
+"""
+Analyze component erosion by checking how many components survive at each threshold.
+
+# Returns
+- logThresholds: Log10 values of bin thresholds
+- survivalFractions: Fraction of components surviving at each threshold
+"""
+function calculateComponentSurvival(
+    feature::AbstractMorphologicalFeature,
+    nBins::Int=100
+)
+    sigMap = feature.significanceMap
+    components = findConnectedComponents(sigMap)
+    nTotal = length(components)
+
+    if nTotal == 0
+        return Float64[], Float64[]
+    end
+
+    # Use maxSignature field from ConnectedComponent
+    componentMaxSigs = Float32[cc.maxSignature for cc in components]
+
+    # Range
+    minSig = max(minimum(componentMaxSigs), 1f-6)
+    maxSig = maximum(componentMaxSigs)
+
+    if minSig ≈ maxSig
+        return [log10(minSig)], [1.0]
+    end
+
+    logThresholds = range(log10(minSig), log10(maxSig), length=nBins)
+    thresholds = 10 .^ logThresholds
+
+    survivalFractions = zeros(Float64, nBins)
+    sortedMaxSigs = sort(componentMaxSigs)
+
+    for i in 1:nBins
+        t = thresholds[i]
+        # Count components with maxSig >= t
+        idx = searchsortedfirst(sortedMaxSigs, t)
+        nSurviving = nTotal - idx + 1
+        survivalFractions[i] = nSurviving / nTotal
+    end
+
+    return logThresholds, survivalFractions
+end
+
+
+"""
+Applies a flat threshold where the fraction of surviving components equals `targetPercent`.
+Default is 0.5 (50% survival point).
+"""
+function componentErosionPercentileThreshold!(
+    feature::AbstractMorphologicalFeature,
+    targetPercent::Real=0.5;
+    nBins::Int=100
+)
+    logThresholds, survivalFractions = calculateComponentSurvival(feature, nBins)
+
+    if isempty(survivalFractions)
+        return 0.0f0
+    end
+
+    # Find first index where fraction <= target
+    idx = findfirst(x -> x <= targetPercent, survivalFractions)
+
+    thresholdLog = if isnothing(idx)
+        # Fallback if never reaches target (e.g., if even at max, survival > target)
+        logThresholds[end]
+    elseif idx == 1
+        logThresholds[1]
+    else
+        # Interpolate between idx-1 and idx
+        f1 = survivalFractions[idx-1]
+        f2 = survivalFractions[idx]
+        l1 = logThresholds[idx-1]
+        l2 = logThresholds[idx]
+
+        # Linear interpolation in log space
+        if f1 == f2
+            l1
+        else
+            t = (targetPercent - f1) / (f2 - f1)
+            l1 + t * (l2 - l1)
+        end
+    end
+
+    thresholdVal = 10^thresholdLog
+    flatThreshold!(feature, Float32(thresholdVal))
+    return Float32(thresholdVal)
+end
+
+
+"""
+Applies a threshold at the plateau where component elimination rate stabilizes.
+This is detected by finding where the rate of change (1st derivative magnitude) 
+drops below `rateThreshold` fraction of the maximum rate.
+"""
+function componentErosionPlateauThreshold!(
+    feature::AbstractMorphologicalFeature;
+    nBins::Int=500,
+    rateThreshold::Real=0.05
+)
+    logThresholds, survivalFractions = calculateComponentSurvival(feature, nBins)
+
+    if length(survivalFractions) < 5
+        return 0.0f0
+    end
+
+    # Calculate 1st derivative (rate of change)
+    d1 = zeros(Float64, length(survivalFractions))
+    for i in 2:length(survivalFractions)-1
+        d1[i] = (survivalFractions[i+1] - survivalFractions[i-1]) / 2
+    end
+
+    # Find max magnitude of rate (most negative = steepest decline)
+    maxRate = maximum(abs.(d1))
+
+    if maxRate ≈ 0
+        return 0.0f0
+    end
+
+    # Plateau threshold: where |rate| drops below rateThreshold * maxRate
+    targetRate = rateThreshold * maxRate
+
+    # Search from the point of maximum decline forward
+    _, steepestIdx = findmin(d1)  # Most negative = steepest decline
+
+    bestIdx = length(logThresholds)  # Default to end
+
+    for i in steepestIdx:length(d1)-1
+        if abs(d1[i]) < targetRate
+            bestIdx = i
+            break
+        end
+    end
+
+    thresholdVal = 10^logThresholds[bestIdx]
+    flatThreshold!(feature, Float32(thresholdVal))
+    return Float32(thresholdVal)
+end

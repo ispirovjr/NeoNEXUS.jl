@@ -1,5 +1,6 @@
 # Unit tests for Thresholding functions
 # Tests use real density fields with known cluster centers to validate thresholds
+using Test, NeoNEXUS, FFTW, Statistics
 
 @testset "Threshold Functions" begin
 
@@ -194,13 +195,13 @@
         @test node.thresholdMap[cx, cy, cz] == 1.0f0
     end
 
-    @testset "thresholdedAverageDensity!" begin
+    @testset "thresholdedAverageDensity" begin
         node = NodeFeature((N, N, N), kx, ky, kz)
         density = fill(10.0f0, N, N, N)
 
         # No thresholded voxels → returns 0
         fill!(node.thresholdMap, 0f0)
-        @test thresholdedAverageDensity!(node, density) == 0f0
+        @test thresholdedAverageDensity(node, density) == 0f0
 
         # Mark some voxels with known density
         node.thresholdMap[1, 1, 1] = 1.0f0
@@ -209,32 +210,73 @@
         density[2, 2, 2] = 200.0f0
 
         # Average should be (100 + 200) / 2 = 150
-        @test thresholdedAverageDensity!(node, density) == 150.0f0
+        @test thresholdedAverageDensity(node, density) == 150.0f0
     end
 
-    @testset "averageDensityThreshold!" begin
+    @testset "averageDensityThreshold! (Search Logic)" begin
         node = NodeFeature((N, N, N), kx, ky, kz)
         density = fill(10.0f0, N, N, N)
 
-        # Setup: mark some voxels
+        # Setup: Clear maps
+        fill!(node.significanceMap, 0f0)
         fill!(node.thresholdMap, 0f0)
-        node.thresholdMap[1, 1, 1] = 1.0f0
+
+        # Scenario:
+        # P1: Sig=30, Rho=500 -> Avg=500
+        # P2: Sig=20, Rho=300 -> Avg(P1+P2)=400
+        # P3: Sig=10, Rho=100 -> Avg(P1+P2+P3)=300
+
+        node.significanceMap[1, 1, 1] = 10.0f0
         density[1, 1, 1] = 100.0f0
-        node.thresholdMap[2, 2, 2] = 1.0f0
-        density[2, 2, 2] = 200.0f0
-        # Average = 150
 
-        # Test: requirement met
-        result = averageDensityThreshold!(node, density, 100.0f0)
-        @test result[1] == 150.0f0  # Average density
-        @test result[2] == true     # Meets requirement
-        @test sum(node.thresholdMap) == 2.0f0  # Not cleared
+        node.significanceMap[2, 2, 2] = 20.0f0
+        density[2, 2, 2] = 300.0f0
 
-        # Test: requirement not met - should clear threshold map
-        result = averageDensityThreshold!(node, density, 200.0f0)
-        @test result[1] == 150.0f0  # Average density
-        @test result[2] == false    # Does not meet requirement
-        @test sum(node.thresholdMap) == 0.0f0  # Cleared
+        node.significanceMap[3, 3, 3] = 30.0f0
+        density[3, 3, 3] = 500.0f0
+
+        # Test A: Target Density = 400
+        # Expect to include P1 and P2 (Sig >= 20)
+        # Threshold should be 20.0 (signature of P2)
+        threshA = averageDensityThreshold!(node, density, 400.0f0)
+
+        @test threshA == 20.0f0
+        @test node.thresholdMap[3, 3, 3] == 1.0f0 # P1
+        @test node.thresholdMap[2, 2, 2] == 1.0f0 # P2
+        @test node.thresholdMap[1, 1, 1] == 0.0f0 # P3
+        @test thresholdedAverageDensity(node, density) >= 400.0f0
+        @test thresholdedAverageDensity(node, density) == 400.0f0
+
+        # Test B: Target Density = 450
+        # Expect to include only P1 (Sig >= 30, Avg=500)
+        # If we included P2, Avg=400 < 450.
+        threshB = averageDensityThreshold!(node, density, 450.0f0)
+
+        @test threshB == 30.0f0
+        @test node.thresholdMap[3, 3, 3] == 1.0f0
+        @test node.thresholdMap[2, 2, 2] == 0.0f0
+        @test thresholdedAverageDensity(node, density) == 500.0f0
+
+        # Test C: Target Density = 200
+        # Expect to include all (P1+P2+P3, Avg=300 >= 200)
+        threshC = averageDensityThreshold!(node, density, 200.0f0)
+
+        @test threshC == 10.0f0
+        @test sum(node.thresholdMap) == 3.0f0
+        @test thresholdedAverageDensity(node, density) == 300.0f0
+
+        # Test D: Impossible Target
+        # Target = 600 (Max available is 500)
+        # So it returns threshold of top voxel.
+        threshD = averageDensityThreshold!(node, density, 600.0f0)
+        @test threshD == 30.0f0
+        @test node.thresholdMap[3, 3, 3] == 1.0f0
+
+        # Test E: Empty map
+        fill!(node.significanceMap, 0f0)
+        threshE = averageDensityThreshold!(node, density, 100.0f0)
+        @test threshE == 0f0
+        @test sum(node.thresholdMap) == 0f0
     end
 
 
@@ -299,6 +341,50 @@
         fill!(node.significanceMap, 0f0)
         thresholdVal = deltaMSquaredThreshold!(node, density)
         @test thresholdVal == 0f0
+    end
+
+
+    @testset "componentErosionThresholds" begin
+        # Create a synthetic scenario with 3 distinct components
+        # C1: Max S = 100
+        # C2: Max S = 50
+        # C3: Max S = 10
+
+        node = NodeFeature((N, N, N), kx, ky, kz)
+        fill!(node.significanceMap, 0f0)
+
+        # C1
+        node.significanceMap[1, 1, 1] = 100.0f0
+        # C2
+        node.significanceMap[5, 5, 5] = 50.0f0
+        # C3
+        node.significanceMap[10, 10, 10] = 10.0f0
+
+        # Test 50% percentile threshold
+        # Total = 3. 
+        # > 100 : 0 surviving (0%)
+        # > 50  : 1 surviving (33%) -> C1
+        # > 10  : 2 surviving (66%) -> C1, C2
+        # > 0   : 3 surviving (100%) -> C1, C2, C3
+
+        # Target 50%: Should fall between S=10 and S=50 (approx 20-30ish)
+        # If we target 0.5 (50% survival), it should pick a threshold where 1.5 components survive?
+        # Survival fraction at S=10 is 66%, at S=50 is 33%.
+        # So 50% is roughly halfway in log space between 10 and 50.
+
+        t50 = componentErosionPercentileThreshold!(node, 0.5, nBins=20)
+        @test t50 > 10.0f0
+        @test t50 < 100.0f0
+
+        # Test Plateau
+        # With only 3 points, derivative is noisy, but let's just ensure it runs
+        tPlateau = componentErosionPlateauThreshold!(node, nBins=20)
+        @test tPlateau > 0.0f0
+
+        # Empty case
+        fill!(node.significanceMap, 0f0)
+        @test componentErosionPercentileThreshold!(node) == 0f0
+        @test componentErosionPlateauThreshold!(node) == 0f0
     end
 
 end

@@ -12,7 +12,8 @@ Modularized test structure:
 - Thresholds: Thresholding functions
 - Filters: Filter functions
 - TDD: for test driven development
-- pipeline: High-level orchestration
+- ConnectedComponents: Connected component analysis
+- Pipeline: High-level orchestration
 =#
 
 @testset "NeoNEXUS" begin

@@ -30,7 +30,7 @@
         field = randn(Float32, N, N, N)
 
         # Run the pipeline
-        NeoNEXUS.run(runner, field, Default)
+        NeoNEXUS.run(runner, field)
 
         # Check if significance maps are populated
         @test any(features[1].significanceMap .> 0)
@@ -60,8 +60,8 @@
         @test size(filament.thresholdMap) == (N, N, N)
         @test size(wall.thresholdMap) == (N, N, N)
 
-        # Check thresholds returned
-        @test thresholds.nodeThres == 200.0f0
+        # Check thresholds returned (nodeThres is computed, not fixed)
+        @test thresholds.nodeThres > 0f0
     end
 
 end

@@ -1,4 +1,5 @@
-struct SheetFeature <: AbstractMorphologicalFeature # Cosmological Walls
+# Cosmological Walls: detected via λ1 < 0, |λ2/λ1| < 1, |λ3/λ1| < 1
+struct SheetFeature <: AbstractMorphologicalFeature
     significanceMap::Array{Float32,3}
     thresholdMap::Array{Float32,3}
     kx::Vector{Float64}
@@ -43,8 +44,14 @@ struct NodeFeature <: AbstractMorphologicalFeature
     end
 end
 
+"""
+General signature evaluation function
 
-# general signature evaluation function
+Resolves eigencache based on mode (None, Read, Write)
+Calls signature function via multiple dispatch.
+
+Returns significance map.
+    """
 function (feature::AbstractMorphologicalFeature)(
     field::AbstractArray{<:Real,3},
     cache::Union{Nothing,HessianEigenCache}=nothing,

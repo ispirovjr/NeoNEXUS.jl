@@ -1,5 +1,3 @@
-
-
 """
 GaussianFourierFilter struct. Carries k-vectors for Fourier space filtering.
 Uses functor pattern for filtering once created (see below).

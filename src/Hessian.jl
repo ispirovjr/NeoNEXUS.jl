@@ -1,4 +1,9 @@
-# Stores sorted eigenvalues λ1 ≤ λ2 ≤ λ3 per voxel
+"""
+Stores sorted eigenvalues λ1 ≤ λ2 ≤ λ3 per voxel
+
+Should be used in between features for a given smoothing scale to avoid
+recomputing the same eigenvalues multiple times.
+"""
 struct HessianEigenCache
     λ1::Array{Float32,3}
     λ2::Array{Float32,3}
@@ -75,14 +80,20 @@ function computeHessianComponents!(
     Hxx, Hyy, Hzz, Hxy, Hxz, Hyz
 )
     # Diagonal components (∂²/∂x², ∂²/∂y², ∂²/∂z²)
-    hessianComp!(tmp, fftField, kx, kx, 1, 1); Hxx .= real.(FFTW.ifft(tmp))
-    hessianComp!(tmp, fftField, ky, ky, 2, 2); Hyy .= real.(FFTW.ifft(tmp))
-    hessianComp!(tmp, fftField, kz, kz, 3, 3); Hzz .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kx, kx, 1, 1)
+    Hxx .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, ky, ky, 2, 2)
+    Hyy .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kz, kz, 3, 3)
+    Hzz .= real.(FFTW.ifft(tmp))
 
     # Off-diagonal components (∂²/∂x∂y, ∂²/∂x∂z, ∂²/∂y∂z)
-    hessianComp!(tmp, fftField, kx, ky, 1, 2); Hxy .= real.(FFTW.ifft(tmp))
-    hessianComp!(tmp, fftField, kx, kz, 1, 3); Hxz .= real.(FFTW.ifft(tmp))
-    hessianComp!(tmp, fftField, ky, kz, 2, 3); Hyz .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kx, ky, 1, 2)
+    Hxy .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, kx, kz, 1, 3)
+    Hxz .= real.(FFTW.ifft(tmp))
+    hessianComp!(tmp, fftField, ky, kz, 2, 3)
+    Hyz .= real.(FFTW.ifft(tmp))
 
     return nothing
 end
@@ -94,9 +105,9 @@ function computeEigenvalues!(
 )
     @inbounds for I in eachindex(Hxx)
         H = @SMatrix [
-            Hxx[I]  Hxy[I]  Hxz[I];
-            Hxy[I]  Hyy[I]  Hyz[I];
-            Hxz[I]  Hyz[I]  Hzz[I]
+            Hxx[I] Hxy[I] Hxz[I];
+            Hxy[I] Hyy[I] Hyz[I];
+            Hxz[I] Hyz[I] Hzz[I]
         ]
 
         λ = eigen(Symmetric(H)).values
@@ -117,12 +128,12 @@ Uses 1D k-vectors and dimension indices to construct full 3D derivatives.
 """
 @inline function hessianComp!(tmp, fftField, kα, kβ, dimα::Int, dimβ::Int)
     Nx, Ny, Nz = size(fftField)
-    
+
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
         kαVal = selectK(kα, i, j, k, dimα)
         kβVal = selectK(kβ, i, j, k, dimβ)
-        tmp[i,j,k] = fftField[i,j,k] * (-kαVal * kβVal)
+        tmp[i, j, k] = fftField[i, j, k] * (-kαVal * kβVal)
     end
-    
+
     return nothing
 end
