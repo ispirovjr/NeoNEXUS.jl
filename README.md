@@ -122,12 +122,43 @@ Beyond standard Large Scale Structure (LSS) analysis, NeoNEXUS is applicable in:
 ```
 NeoNEXUS/
 ├── src/
-│   ├── NeoNEXUS.jl    # Module entry point
-│   ├── Types.jl       # Abstract types & Enums
-│   ├── Hessian.jl     # FFT-based Hessian & Eigenvalue computation
-│   ├── Features.jl    # Sheet, Line, Node feature definitions
-│   ├── Filters.jl     # Scale-space filters (Gaussian)
-│   └── Runner.jl      # Pipeline orchestration logic
-└── test/
-    └── testTdd.jl     # Unit tests demonstrating usage
+│   ├── NeoNEXUS.jl           # Module entry point & exports
+│   ├── Types.jl              # Abstract types & Enums (CacheMode)
+│   ├── Hessian.jl            # FFT-based Hessian & Eigenvalue computation
+│   ├── Features.jl           # Sheet, Line, Node feature definitions
+│   ├── Filters.jl            # Scale-space filters (Gaussian, Log-Gaussian)
+│   ├── Thresholds.jl         # Thresholding functions (volume, mass, ΔM², etc.)
+│   ├── ConnectedComponents.jl # Connected component analysis & pruning
+│   └── Runner.jl             # Pipeline orchestration (MMFClassic, NEXUSPlus)
+├── test/
+│   ├── runtests.jl           # Test suite entry point
+│   ├── testHessians.jl       # Hessian computation tests
+│   ├── testFeatureSignatureMap.jl  # Feature signature tests
+│   ├── testFilters.jl        # Filter tests
+│   ├── testThresholds.jl     # Thresholding function tests
+│   ├── testConnectedComponents.jl  # Connected component tests
+│   └── testTdd.jl            # Orchestration tests
+└── demo/
+    └── orchestrationDemo.jl  # Demo comparing MMFClassic vs NEXUSPlus
+```
+
+## Two Orchestration Methods
+
+NeoNEXUS provides two complete pipelines:
+
+### MMFClassic
+The classic Multi-scale Morphology Filter (Aragón-Calvo et al. 2007):
+- Linear Gaussian filtering at multiple scales
+- Processes features: Sheets → Filaments → Nodes
+- Plateau-based thresholding (component erosion stability)
+
+### NEXUSPlus
+The enhanced NEXUS+ method (Cautun et al. 2013):
+- Linear filtering for Nodes, Log-Gaussian for Filaments/Walls
+- Processes features: Nodes → Filaments → Walls
+- Density-based thresholding for Nodes, ΔM² peak for others
+
+Run the demo to compare both methods:
+```bash
+julia --project=. demo/orchestrationDemo.jl
 ```

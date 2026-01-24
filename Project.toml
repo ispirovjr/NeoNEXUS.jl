@@ -1,6 +1,6 @@
 name = "NeoNEXUS"
 uuid = "ce3fc199-6729-41fd-b549-7e4572107528"
-version = "0.7.0"
+version = "1.0.0"
 authors = ["Ivan Spirov <ispirovjr@gmail.com>"]
 
 [deps]

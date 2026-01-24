@@ -109,16 +109,15 @@ function run(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
     # === Scale Loop ===
     for scale in runner.scales
         # Nodes: linear filter, no cache
-        nodeFiltered = runner.filter(normDensity, scale, runner.node)
-        runner.node(nodeFiltered, nothing, None)
+        linFiltered = runner.filter(normDensity, scale, runner.node)
+        runner.node(linFiltered, nothing, None)
 
         # Filaments: log filter, write cache
-        filamentFiltered = runner.filter(normDensity, scale, runner.filament)
-        runner.filament(filamentFiltered, cache, Write)
+        logFiltered = runner.filter(normDensity, scale, runner.filament)
+        runner.filament(logFiltered, cache, Write)
 
         # Walls: log filter, read filament cache
-        wallFiltered = runner.filter(normDensity, scale, runner.wall)
-        runner.wall(wallFiltered, cache, Read)
+        runner.wall(logFiltered, cache, Read)
     end
 
     # === Thresholding (hierarchical with signature masking) ===
