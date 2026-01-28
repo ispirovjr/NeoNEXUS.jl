@@ -15,6 +15,8 @@ export
     # filters
     AbstractScaleFilter,
     GaussianFourierFilter,
+    TopHatFourierFilter,
+    TopHatFourierFilter,
 
     # features
     AbstractFeature,

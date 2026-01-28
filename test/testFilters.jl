@@ -80,4 +80,19 @@
         @test size(filtered) == (N, N, N)
     end
 
+    @testset "TopHat Fourier Filter (Spherical)" begin
+        filter = TopHatFourierFilter((N, N, N))
+        field = randn(Float32, N, N, N)
+
+        # Basic execution
+        filtered = filter(field, 3.0)
+        @test size(filtered) == (N, N, N)
+        @test std(filtered) < std(field) # Smoothing
+
+        # Conservation of mass (mean)
+        @test isapprox(mean(filtered), mean(field), atol=1e-5)
+    end
+
+
+
 end
