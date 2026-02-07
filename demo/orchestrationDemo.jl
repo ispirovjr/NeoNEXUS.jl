@@ -2,12 +2,7 @@
 #=
 NeoNEXUS Orchestration Demo
 ============================
-Demonstrates both orchestration methods available in NeoNEXUS:
-1. MMFClassic - Classic Multi-scale Morphology Filter (Aragón-Calvo et al. 2007)
-2. NEXUSPlus  - Enhanced NEXUS+ method (Cautun et al. 2013)
-
-Usage:
-    julia --project=. demo/orchestrationDemo.jl
+Demonstrates NeoNEXUS orchestration methods
 =#
 
 using NeoNEXUS
@@ -17,12 +12,10 @@ using Statistics
 using Plots
 
 println("="^70)
-println("NeoNEXUS Orchestration Methods Demo")
+println("NeoNEXUS Orchestration Demo")
 println("="^70)
 
-# =============================================================================
 # Load Data
-# =============================================================================
 function loadDensity(filepath::String, datasetName::String="densityfield")
     h5open(filepath, "r") do file
         return read(file, datasetName)

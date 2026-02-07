@@ -29,8 +29,8 @@ function run(runner::MMFClassic, densityField::AbstractArray{<:Real,3})
 
     # Scale loop
     for scale in runner.scales
-        # Apply filter at this scale
-        filteredField = runner.filter(densityField, scale)
+        # Apply filter at this scale, with R² signature scaling 
+        filteredField = runner.filter(densityField, scale) .* scale^2
 
         # Feature loop with cache reuse
         for (i, feature) in enumerate(runner.features)
@@ -81,6 +81,14 @@ struct NEXUSPlus
     scales::Vector{Float64}
 end
 
+function NEXUSPlus(gridSize::Int, scales::Vector{Float64})
+    kx = ky = kz = FFTW.fftfreq(gridSize) .* gridSize .* 2π
+    sheet = SheetFeature((gridSize, gridSize, gridSize), kx, ky, kz)
+    line = LineFeature((gridSize, gridSize, gridSize), kx, ky, kz)
+    node = NodeFeature((gridSize, gridSize, gridSize), kx, ky, kz)
+
+    return NEXUSPlus(GaussianFourierFilter((gridSize, gridSize, gridSize)), node, line, sheet, scales)
+end
 
 """
 Execute the NEXUS+ pipeline on a density field.
@@ -107,13 +115,16 @@ function run(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
     cache = HessianEigenCache(gridSize...)
 
     # === Scale Loop ===
+    # R² signature scaling applied after filtering (Cautun et al. 2013)
     for scale in runner.scales
+        R² = scale^2
+
         # Nodes: linear filter, no cache
-        linFiltered = runner.filter(normDensity, scale, runner.node)
+        linFiltered = runner.filter(normDensity, scale, runner.node) .* R²
         runner.node(linFiltered, nothing, None)
 
         # Filaments: log filter, write cache
-        logFiltered = runner.filter(normDensity, scale, runner.filament)
+        logFiltered = runner.filter(normDensity, scale, runner.filament) .* R²
         runner.filament(logFiltered, cache, Write)
 
         # Walls: log filter, read filament cache
