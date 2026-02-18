@@ -65,7 +65,8 @@ export
     # orchestration
     MMFClassic,
     NEXUSPlus,
-    run
+    run,
+    runMultithreaded
 
 end
 

@@ -104,14 +104,10 @@ Thresholding is done as follows:
 
 """
 function run(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
-    # Normalize density by mean
     meanρ = Statistics.mean(densityField)
     normDensity = densityField ./ meanρ
 
-    # Get grid size
     gridSize = size(runner.node.significanceMap)
-
-    # Create cache for filament→wall reuse
     cache = HessianEigenCache(gridSize...)
 
     # === Scale Loop ===
@@ -119,21 +115,87 @@ function run(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
     for scale in runner.scales
         R² = scale^2
 
-        # Nodes: linear filter, no cache
         linFiltered = runner.filter(normDensity, scale, runner.node) .* R²
         runner.node(linFiltered, nothing, None)
 
-        # Filaments: log filter, write cache
         logFiltered = runner.filter(normDensity, scale, runner.filament) .* R²
         runner.filament(logFiltered, cache, Write)
 
-        # Walls: log filter, read filament cache
         runner.wall(logFiltered, cache, Read)
     end
 
     # === Thresholding (hierarchical with signature masking) ===
+    nodeThres = findComponentPercentageThreshold!(
+        runner.node,
+        normDensity,
+        370.0,
+        0.50;
+        excludeEmpty=false
+    )
 
-    # 1. Nodes: find threshold where 50% of components (even empty ones) have >= 370x density
+    maskSignatureMap!(runner.filament, runner.node)
+    filamentThres = deltaMSquaredThreshold!(runner.filament, normDensity)
+
+    maskSignatureMap!(runner.wall, runner.node)
+    maskSignatureMap!(runner.wall, runner.filament)
+    wallThres = deltaMSquaredThreshold!(runner.wall, normDensity)
+
+    return (nodeThres=nodeThres, filamentThres=filamentThres, wallThres=wallThres)
+end
+
+
+"""
+Multithreaded variant of the NEXUS+ pipeline.
+
+Parallelizes the scale loop using `Threads.@threads`. Each scale gets its own
+`HessianEigenCache` and signature arrays, avoiding all race conditions.
+The per-scale signatures are reduced via element-wise max into the feature's
+`significanceMap` after the parallel loop.
+
+Thresholding is identical to the sequential `run`.
+
+!!! note
+    Requires Julia to be started with multiple threads (`julia --threads=N`).
+    FFTW internal threading is disabled to avoid thread-safety issues.
+"""
+function runMultithreaded(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
+    # Disable FFTW internal threading for thread safety
+    FFTW.set_num_threads(1)
+
+    meanρ = Statistics.mean(densityField)
+    normDensity = densityField ./ meanρ
+
+    gridSize = size(runner.node.significanceMap)
+    nScales = length(runner.scales)
+
+    nodeSigs = [zeros(Float32, gridSize) for _ in 1:nScales]
+    filaSigs = [zeros(Float32, gridSize) for _ in 1:nScales]
+    wallSigs = [zeros(Float32, gridSize) for _ in 1:nScales]
+
+    # === Parallel scale loop ===
+    Threads.@threads for idx in 1:nScales
+        scale = runner.scales[idx]
+        R² = scale^2
+
+
+        linFiltered = runner.filter(normDensity, scale, runner.node) .* R²
+        localCache = computeHessianEigenvalues(linFiltered, runner.node.kx, runner.node.ky, runner.node.kz)
+        nodeSigs[idx] .= computeSignature(runner.node, localCache)
+
+        logFiltered = runner.filter(normDensity, scale, runner.filament) .* R²
+        computeHessianEigenvalues!(logFiltered, runner.filament.kx, runner.filament.ky, runner.filament.kz, localCache)
+        filaSigs[idx] .= computeSignature(runner.filament, localCache)
+        wallSigs[idx] .= computeSignature(runner.wall, localCache)
+    end
+
+    for idx in 1:nScales
+        @. runner.node.significanceMap = max(runner.node.significanceMap, nodeSigs[idx])
+        @. runner.filament.significanceMap = max(runner.filament.significanceMap, filaSigs[idx])
+        @. runner.wall.significanceMap = max(runner.wall.significanceMap, wallSigs[idx])
+    end
+
+
+    # 1. Nodes: find threshold where 50% of components have >= 370x density
     nodeThres = findComponentPercentageThreshold!(
         runner.node,
         normDensity,
