@@ -33,17 +33,18 @@ function (filter::GaussianFourierFilter)(
     densityField::AbstractArray{<:Real,3},
     R::Real
 )
-    fftField = FFTW.fft(densityField)
+    fftField = FFTW.rfft(densityField)
     Nx, Ny, Nz = size(densityField)
     R² = R^2
+    Nkx = size(fftField, 1)
 
     # Apply Gaussian kernel in Fourier space
-    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nkx
         k² = filter.kx[i]^2 + filter.ky[j]^2 + filter.kz[k]^2
         fftField[i, j, k] *= exp(-k² * R² / 2)
     end
 
-    return real.(FFTW.ifft(fftField))
+    return FFTW.irfft(fftField, Nx)
 end
 
 """
@@ -86,7 +87,7 @@ struct TopHatFourierFilter <: AbstractScaleFilter
 
     function TopHatFourierFilter(gridSize::Tuple{Int,Int,Int})
         Nx, Ny, Nz = gridSize
-        kx = FFTW.fftfreq(Nx) .* 2π
+        kx = FFTW.rfftfreq(Nx) .* 2π
         ky = FFTW.fftfreq(Ny) .* 2π
         kz = FFTW.fftfreq(Nz) .* 2π
         return new(collect(Float64, kx), collect(Float64, ky), collect(Float64, kz))
@@ -101,10 +102,11 @@ function (filter::TopHatFourierFilter)(
     densityField::AbstractArray{<:Real,3},
     R::Real
 )
-    fftField = FFTW.fft(densityField)
+    fftField = FFTW.rfft(densityField)
     Nx, Ny, Nz = size(densityField)
+    Nkx = size(fftField, 1)
 
-    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nkx
         kVal = sqrt(filter.kx[i]^2 + filter.ky[j]^2 + filter.kz[k]^2)
         kR = kVal * R
 
@@ -117,7 +119,7 @@ function (filter::TopHatFourierFilter)(
         fftField[i, j, k] *= weight
     end
 
-    return real.(FFTW.ifft(fftField))
+    return FFTW.irfft(fftField, Nx)
 end
 
 # Default implementation

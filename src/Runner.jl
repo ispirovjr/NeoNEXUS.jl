@@ -82,7 +82,8 @@ struct NEXUSPlus
 end
 
 function NEXUSPlus(gridSize::Int, scales::Vector{Float64})
-    kx = ky = kz = FFTW.fftfreq(gridSize) .* gridSize .* 2π
+    kx = FFTW.rfftfreq(gridSize) .* gridSize .* 2π
+    ky = kz = FFTW.fftfreq(gridSize) .* gridSize .* 2π
     sheet = SheetFeature((gridSize, gridSize, gridSize), kx, ky, kz)
     line = LineFeature((gridSize, gridSize, gridSize), kx, ky, kz)
     node = NodeFeature((gridSize, gridSize, gridSize), kx, ky, kz)
