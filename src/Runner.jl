@@ -216,3 +216,5 @@ function runMultithreaded(runner::NEXUSPlus, densityField::AbstractArray{<:Real,
 
     return (nodeThres=nodeThres, filamentThres=filamentThres, wallThres=wallThres)
 end
+
+

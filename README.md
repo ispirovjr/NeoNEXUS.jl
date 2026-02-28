@@ -3,24 +3,24 @@
 [![Julia](https://img.shields.io/badge/Julia-1.10+-blue.svg)](https://julialang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**NeoNEXUS** is a modernized, modular, and high-performance implementation of the **Multi-scale Morphology Filter (MMF)** (later modernized as **NEXUS**) in Julia. It is designed to detect and classify multi-scale morphological structures in 3D density fields, such as the cosmic web's nodes, filaments, and walls.
+**NeoNEXUS** is a modernized, modular, and high-performance implementation of the **Multi-scale Morphology Filter (MMF)** (later modernized as **NEXUS**) in Julia. It is designed to detect and classify multi-scale morphological structures in 3D scalar fields — including nodes, filaments, and walls.
 
 ## Introduction
 
-In the era of "Big Data," scientific datasets are growing exponentially—from terabytes of cosmological simulations to petabytes of astronomical survey data (e.g., Gaia, DESI). Processing this data requires efficient, automated tools.
+In the era of "Big Data," scientific datasets are growing exponentially. Processing this data requires efficient, automated tools.
 
-**NeoNEXUS** (Network Extraction via Unsupervised Scale-space) addresses this by providing a physically motivated, training-free morphological analysis framework. Originating from medical imaging and adapted for cosmology, it identifies structures based on local geometry (Hessian eigenvalues) rather than simple density thresholds.
+**NeoNEXUS** (Network Extraction via Unsupervised Scale-space) addresses this by providing a physically motivated, training-free morphological analysis framework. Originating from medical imaging, it identifies structures based on local geometry (Hessian eigenvalues) rather than simple density thresholds.
 
 ### Key Philosophy
 *   **Modularity**: Decoupled architecture allows users to easily swap filters, feature definitions, and thresholding logic.
 *   **Performance**: Built in Julia, leveraging **multiple dispatch**, **functors**, and a **singleton pattern** for memory-efficient caching of heavy computations (FFTs, Eigenvalues).
-*   **Domain Agnostic**: While built for cosmology, the core logic applies to any scalar field (Medical Imaging, Materials Science).
+*   **Domain Agnostic**: The core logic applies to any scalar field — cosmology, medical imaging, materials science, and more.
 
 ## Features
 
 *   **Multiscale Analysis**: Detects structures at various smoothing scales to capture hierarchical geometry.
 *   **Morphological Classifiers**:
-    *   **Nodes (Clusters)**: Spherical collapse ($\lambda_1, \lambda_2, \lambda_3 < 0$).
+    *   **Nodes**: Spherical collapse ($\lambda_1, \lambda_2, \lambda_3 < 0$).
     *   **Filaments**: Cylindrical collapse ($\lambda_1, \lambda_2 < 0$).
     *   **Sheets (Walls)**: Planar collapse ($\lambda_1 < 0$).
 *   **Optimized Computation**:
@@ -87,7 +87,7 @@ The analysis follows a two-stage loop process:
 
 1.  **Signature Computation Loop**:
     *   Iterate over **Scales** ($R_1, R_2, \dots$).
-    *   Apply **Filter** (e.g., Gaussian) to the density field.
+    *   Apply **Filter** (e.g., Gaussian) to the scalar field.
     *   Compute **Hessian Eigenvalues** ($\lambda_1 \le \lambda_2 \le \lambda_3$).
     *   Evaluate **Feature Signatures** (Response functions) for all requested features (Nodes, Filaments, Sheets).
     *   *Optimization*: The Hessian is computed once per scale and cached (`HessianEigenCache`) for all features.
@@ -98,12 +98,10 @@ The analysis follows a two-stage loop process:
 
 ### Components
 *   **Features (`AbstractMorphologicalFeature`)**: Defines the geometric signature (e.g., `SheetFeature`, `LineFeature`, `NodeFeature`). They act as functors `feature(field)` to compute maps.
-*   **Filters (`AbstractScalarFilter`)**: Handles smoothing in Fourier space (e.g., `GaussianFourierFilter`).
+*   **Filters (`AbstractScaleFilter`)**: Handles smoothing in Fourier space (e.g., `GaussianFourierFilter`).
 *   **Hessian**: Core module for computing derivatives via FFTs. Uses explicit caching strategies (`Read`, `Write`, `None`) to manage memory.
 
 ## Use Cases
-
-Beyond standard Large Scale Structure (LSS) analysis, NeoNEXUS is applicable in:
 
 ### Astrophysics
 *   **Stellar Streams**: Detecting linear structures in galactic density fields for Galactic Archaeology.
@@ -117,6 +115,9 @@ Beyond standard Large Scale Structure (LSS) analysis, NeoNEXUS is applicable in:
 *   **Vascular Mapping**: Tracing blood vessels (tubular/filamentary structures).
 *   **Tumor Detection**: Identifying nodular growths in 3D scans.
 
+### Cosmology
+For cosmology-specific extensions (tidal tensor classification, velocity divergence analysis), see **[CosmoNEXUS](https://github.com/ispirovjr/CosmoNEXUS.jl)**.
+
 ## Project Structure
 
 ```
@@ -126,7 +127,7 @@ NeoNEXUS/
 │   ├── Types.jl              # Abstract types & Enums (CacheMode)
 │   ├── Hessian.jl            # FFT-based Hessian & Eigenvalue computation
 │   ├── Features.jl           # Sheet, Line, Node feature definitions
-│   ├── Filters.jl            # Scale-space filters (Gaussian, Log-Gaussian)
+│   ├── Filters.jl            # Scale-space filters (Gaussian, Log-Gaussian, TopHat)
 │   ├── Thresholds.jl         # Thresholding functions (volume, mass, ΔM², etc.)
 │   ├── ConnectedComponents.jl # Connected component analysis & pruning
 │   └── Runner.jl             # Pipeline orchestration (MMFClassic, NEXUSPlus)
@@ -137,9 +138,11 @@ NeoNEXUS/
 │   ├── testFilters.jl        # Filter tests
 │   ├── testThresholds.jl     # Thresholding function tests
 │   ├── testConnectedComponents.jl  # Connected component tests
-│   └── testTdd.jl            # Orchestration tests
+│   └── testOrchestration.jl  # Pipeline orchestration tests
 └── demo/
-    └── orchestrationDemo.jl  # Demo comparing MMFClassic vs NEXUSPlus
+    ├── orchestrationDemo.jl  # Demo comparing MMFClassic vs NEXUSPlus
+    ├── quickStartDemo.jl     # Minimal quick-start example
+    └── multithreadDemo.jl    # Multithreaded scaling demo
 ```
 
 ## Two Orchestration Methods

@@ -1,7 +1,7 @@
-# TDD Future Development Tests
-# Tests for runner orchestration - now implemented
+# Orchestration tests for NeoNEXUS pipelines
+# Tests MMFClassic and NEXUSPlus runners
 
-@testset "TDD Future Features" begin
+@testset "Orchestration" begin
 
     # Shared grid setup for tests
     function centeredGrid(N, L=1.0)
@@ -20,8 +20,7 @@
     kz = kr
 
 
-
-    @testset "MMFClassic Pipeline Orchestration" begin
+    @testset "MMFClassic Pipeline" begin
         filter = GaussianFourierFilter((N, N, N))
         features = AbstractFeature[SheetFeature((N, N, N), kx, ky, kz)]
         scales = [1.0, 2.0]
@@ -36,7 +35,7 @@
         @test any(features[1].significanceMap .> 0)
     end
 
-    @testset "NEXUSPlus Pipeline Orchestration" begin
+    @testset "NEXUSPlus Pipeline" begin
         filter = GaussianFourierFilter((N, N, N))
         node = NodeFeature((N, N, N), kx, ky, kz)
         filament = LineFeature((N, N, N), kx, ky, kz)
@@ -65,4 +64,3 @@
     end
 
 end
-

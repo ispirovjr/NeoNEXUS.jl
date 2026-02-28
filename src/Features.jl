@@ -1,4 +1,4 @@
-# Cosmological Walls: detected via λ1 < 0, |λ2/λ1| < 1, |λ3/λ1| < 1
+# Planar structures (walls): detected via λ1 < 0, |λ2/λ1| < 1, |λ3/λ1| < 1
 struct SheetFeature <: AbstractMorphologicalFeature
     significanceMap::Array{Float32,3}
     thresholdMap::Array{Float32,3}
@@ -14,7 +14,7 @@ struct SheetFeature <: AbstractMorphologicalFeature
 end
 
 
-# Filaments: detected via λ1 < 0, λ2 < 0, |λ3/λ1| < 1
+# Linear structures (filaments): detected via λ1 < 0, λ2 < 0, |λ3/λ1| < 1
 struct LineFeature <: AbstractMorphologicalFeature
     significanceMap::Array{Float32,3}
     thresholdMap::Array{Float32,3}
@@ -29,7 +29,7 @@ struct LineFeature <: AbstractMorphologicalFeature
     end
 end
 
-# Clusters/Nodes: detected via λ1, λ2, λ3 < 0
+# Nodal overdensities (spherical collapse): detected via λ1, λ2, λ3 < 0
 struct NodeFeature <: AbstractMorphologicalFeature
     significanceMap::Array{Float32,3}
     thresholdMap::Array{Float32,3}

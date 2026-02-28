@@ -16,7 +16,6 @@ export
     AbstractScaleFilter,
     GaussianFourierFilter,
     TopHatFourierFilter,
-    TopHatFourierFilter,
 
     # features
     AbstractFeature,
@@ -24,6 +23,7 @@ export
     SheetFeature,
     LineFeature,
     NodeFeature,
+    computeSignature,
 
     # enums
     CacheMode,
@@ -49,7 +49,6 @@ export
     maskSignatureMap!,
     findComponentPercentageThreshold!,
 
-
     # connected components
     ConnectedComponent,
     findConnectedComponents,
@@ -69,4 +68,3 @@ export
     runMultithreaded
 
 end
-

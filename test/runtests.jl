@@ -11,16 +11,16 @@ Modularized test structure:
 - FeatureSignatureMap: Signature maps and cache mode validation
 - Thresholds: Thresholding functions
 - Filters: Filter functions
-- TDD: for test driven development
+- Orchestration: Pipeline orchestration (MMFClassic, NEXUSPlus)
 - ConnectedComponents: Connected component analysis
-- Pipeline: High-level orchestration
 =#
 
 @testset "NeoNEXUS" begin
     include("testHessians.jl")
     include("testFeatureSignatureMap.jl")
     include("testFilters.jl")
-    include("testTdd.jl")
+    include("testOrchestration.jl")
     include("testThresholds.jl")
     include("testConnectedComponents.jl")
 end
+
