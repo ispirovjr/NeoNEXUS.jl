@@ -165,3 +165,16 @@ Run the demo to compare both methods:
 ```bash
 julia --project=. demo/orchestrationDemo.jl
 ```
+
+## Acknowledgements
+
+The author would like to thank the following people for their contributions and assistance with this project:
+
+* **[Rien van de Weygaert]** - For [Supervision of the project and guidance through the process.]
+
+* **[Konstantin Spirov]** - For [Technical Guidance and Support, especially in the initial stages of the project.]
+
+* **[Bram Alferink]**, **[Marius Cautun]** and **[Miguel Aragon-Calvo]** - For [Their previous implementations of the MMF and NEXUS+ algorithms, which served as a foundation for this project.]
+
+
+
