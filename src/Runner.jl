@@ -1,12 +1,16 @@
 """
-Attempted recreation of the Classic Multi-scale Morphology Filter from Aragón-Calvo et al. (2007).
-Iterates over scales, applies filtering, computes Hessian once per scale,
-and evaluates all feature signatures with cache reuse.
+    MMFClassic
+
+Classic Multi-scale Morphology Filter pipeline (Aragón-Calvo et al. 2007).
+
+Iterates over scales with linear Gaussian filtering, computes Hessian once per
+scale, and evaluates all feature signatures with cache reuse. Threshold via
+component erosion plateau.
 
 # Fields
-- `filter: Scale-space filter
-- `features: Feature detectors (Sheet, Line, Node)
-- `scales: Smoothing scales to iterate over
+- `filter::AbstractScaleFilter` — scale-space filter
+- `features::Vector{AbstractFeature}` — feature detectors (Sheet, Line, Node)
+- `scales::Vector{Float64}` — smoothing scales
 """
 struct MMFClassic
     filter::AbstractScaleFilter
@@ -16,9 +20,10 @@ end
 
 
 """
-Execute the MMF pipeline on a density field.
-Loop over scales, compute signatures with linear filter, aggregate via max-pooling.
-Threshold via number of connected components declining.
+    run(runner::MMFClassic, densityField) -> Vector{Float32}
+
+Execute the MMF pipeline: scale loop with cache reuse, then hierarchical
+plateau-based thresholding. Returns per-feature threshold values.
 """
 function run(runner::MMFClassic, densityField::AbstractArray{<:Real,3})
     # Get grid size from first feature
@@ -64,14 +69,19 @@ end
 
 
 """
-Implemenntation of NEXUS+ from Cautun et al. (2013).
+    NEXUSPlus
+
+NEXUS+ pipeline (Cautun et al. 2013).
+
+Uses linear filtering for nodes and log-Gaussian filtering for filaments/walls.
+Threshold: density-based for nodes, ΔM² peak for filaments and walls.
 
 # Fields
-- `filter: Scale-space filter
-- `node: Node feature detector
-- `filament: Filament feature detector
-- `wall: Wall feature detector
-- `scales: Smoothing scales to iterate over
+- `filter::AbstractScaleFilter` — scale-space filter
+- `node::NodeFeature` — node detector
+- `filament::LineFeature` — filament detector
+- `wall::SheetFeature` — wall detector
+- `scales::Vector{Float64}` — smoothing scales
 """
 struct NEXUSPlus
     filter::AbstractScaleFilter
@@ -81,6 +91,11 @@ struct NEXUSPlus
     scales::Vector{Float64}
 end
 
+"""
+    NEXUSPlus(gridSize::Int, scales)
+
+Convenience constructor for a cubic grid of side `gridSize`.
+"""
 function NEXUSPlus(gridSize::Int, scales::Vector{Float64})
     kx = FFTW.rfftfreq(gridSize) .* gridSize .* 2π
     ky = kz = FFTW.fftfreq(gridSize) .* gridSize .* 2π
@@ -92,17 +107,15 @@ function NEXUSPlus(gridSize::Int, scales::Vector{Float64})
 end
 
 """
-Execute the NEXUS+ pipeline on a density field.
+    run(runner::NEXUSPlus, densityField) -> NamedTuple
 
-Loop over scales, compute node signature via linear filter, 
-wall and filament signatures with log filter, aggregate signatures via max-pooling.
-Uses cachine between the latter two
+Execute the NEXUS+ pipeline on a density field (normalised to mean=1 internally).
 
-Thresholding is done as follows:
-- Nodes: ensure collapse in 50% of components (density >= 370x mean)
-- Filaments: ΔM² maximum
-- Walls: ΔM² maximum
+Thresholding:
+- Nodes: 50 % of components must have density ≥ 370× mean.
+- Filaments / Walls: ΔM² maximum.
 
+Returns `(nodeThres, filamentThres, wallThres)`.
 """
 function run(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
     meanρ = Statistics.mean(densityField)
@@ -146,18 +159,16 @@ end
 
 
 """
-Multithreaded variant of the NEXUS+ pipeline.
+    runMultithreaded(runner::NEXUSPlus, densityField) -> NamedTuple
 
-Parallelizes the scale loop using `Threads.@threads`. Each scale gets its own
-`HessianEigenCache` and signature arrays, avoiding all race conditions.
-The per-scale signatures are reduced via element-wise max into the feature's
-`significanceMap` after the parallel loop.
+Multithreaded variant of [`run`](@ref) for [`NEXUSPlus`](@ref).
 
-Thresholding is identical to the sequential `run`.
+Parallelises the scale loop using `Threads.@threads`; each scale gets its own
+cache and signature arrays. Thresholding is identical to the sequential version.
 
 !!! note
-    Requires Julia to be started with multiple threads (`julia --threads=N`).
-    FFTW internal threading is disabled to avoid thread-safety issues.
+    Requires `julia --threads=N`. FFTW internal threading is disabled
+    automatically for thread safety.
 """
 function runMultithreaded(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
     # Disable FFTW internal threading for thread safety
@@ -216,5 +227,3 @@ function runMultithreaded(runner::NEXUSPlus, densityField::AbstractArray{<:Real,
 
     return (nodeThres=nodeThres, filamentThres=filamentThres, wallThres=wallThres)
 end
-
-

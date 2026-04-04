@@ -1,11 +1,12 @@
 # Thresholding functions for morphological feature classification
 # Each function operates on feature.significanceMap and populates feature.thresholdMap
-# All functions return the threshold value (if a universal one is found)
 
 
 """
-Apply a flat (hard) threshold to the feature's significance map.
-Voxels with signature ≥ threshold are marked as 1.0 in thresholdMap, otherwise 0.0.
+    flatThreshold!(feature, threshold) -> Float32
+
+Apply a hard threshold: voxels with signature ≥ `threshold` are set to 1 in
+`feature.thresholdMap`, otherwise 0. Returns the threshold value.
 """
 function flatThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -23,9 +24,9 @@ end
 
 
 """
-Find threshold such that `fraction` of non-zero voxels pass.
-Given N voxels with signature > 0, we find threshold T such that
-the number of voxels with signature ≥ T is approximately `fraction * N`.
+    volumeThreshold!(feature [, fraction=0.5]) -> Float32
+
+Find and apply the threshold such that `fraction` of non-zero voxels pass.
 """
 function volumeThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -69,9 +70,10 @@ end
 
 
 """
-Find threshold such that voxels passing the threshold contain `fraction` of total mass.
-The signature determines which voxels pass (sig ≥ threshold), and mass = density.
-We find threshold T such that: sum(thresholdMap .* density) / sum(density) ≈ fraction
+    massThreshold!(feature, densityField [, fraction=0.5]) -> Float32
+
+Find and apply the threshold such that voxels passing contain `fraction` of
+total mass (density sum) among non-zero-signature voxels.
 """
 function massThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -135,10 +137,9 @@ end
 
 
 """
-Apply a density-based threshold: voxels pass if they have non-zero signature 
-AND density ≥ densityCutoff.
+    massCutoffThreshold!(feature, densityField, densityCutoff) -> Float32
 
-
+Mark voxels that have non-zero signature *and* density ≥ `densityCutoff`.
 """
 function massCutoffThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -160,10 +161,9 @@ end
 
 
 """
-Compute the average density of voxels that are marked in the threshold map.
-Average = sum(density where thresholdMap == 1) / count(thresholdMap == 1)
+    thresholdedAverageDensity(feature, densityField) -> Float32
 
-Returns 0 if no voxels are thresholded.
+Mean density of voxels marked in `feature.thresholdMap`. Returns 0 if none.
 """
 function thresholdedAverageDensity(
     feature::AbstractMorphologicalFeature,
@@ -188,10 +188,10 @@ end
 
 
 """
-Find the signature threshold that achieves a target average density.
+    averageDensityThreshold!(feature, densityField, targetDensity [, nBins=100]) -> Float32
 
-Searches for the lowest signature threshold such that the average density
-of thresholded voxels is ≥ targetDensity.
+Find the lowest signature threshold such that the average density of passing
+voxels is ≥ `targetDensity`.
 """
 function averageDensityThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -245,12 +245,12 @@ function averageDensityThreshold!(
 end
 
 """
-Calculate the change in squared mass with respect to logarithmic signature:
-ΔM² = |d(M²) / d(log S)|
+    calculateΔM²(feature, densityField [, nBins=100]) -> (logSCenters, ΔM²)
 
-# Returns
-- `logSCenters`: Log10 signature values at bin centers.
-- `ΔM²`: Array of calculated derivative values.
+Compute the change in squared cumulative mass with respect to log-signature:
+`ΔM² = |d(M²)/d(log S)|`.
+
+Returns log₁₀ signature bin centres and the corresponding derivative values.
 """
 function calculateΔM²(
     feature::AbstractMorphologicalFeature,
@@ -339,9 +339,10 @@ function calculateΔM²(
 end
 
 """
-Apply a flat threshold at the signature value that maximizes ΔM² = |d(M²) / d(log S)|.
+    deltaMSquaredThreshold!(feature, densityField [, nBins=100]) -> Float32
 
-For more details on procedure see calculateΔM²(feature, densityField, nBins)
+Apply a flat threshold at the signature value that maximises
+`ΔM² = |d(M²)/d(log S)|`. See [`calculateΔM²`](@ref).
 """
 function deltaMSquaredThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -365,15 +366,10 @@ end
 
 
 """
-Mask `feature.significanceMap` where `mask.thresholdMap > 0`.
-Sets masked voxels' signature to 0 (before thresholding).
+    maskSignatureMap!(feature, mask) -> Int
 
-# Arguments
-- feature::AbstractMorphologicalFeature: Feature whose significanceMap will be masked
-- mask::AbstractMorphologicalFeature: Feature whose thresholdMap defines the mask
-
-# Returns
-- Number of voxels masked
+Zero out voxels in `feature.significanceMap` wherever `mask.thresholdMap > 0`.
+Returns the number of voxels masked.
 """
 function maskSignatureMap!(feature::AbstractMorphologicalFeature, mask::AbstractMorphologicalFeature)
     nMasked = 0
@@ -388,12 +384,13 @@ end
 
 
 """
-Find the signature threshold such that a specific percentage of connected components
-meet a density requirement. Generates a threshold map where voxels belonging to
-components that meet the density requirement are set to the threshold value. 
+    findComponentPercentageThreshold!(feature, densityField, densityRequirement, targetPercentage; nBins=100, excludeEmpty=true) -> Float32
 
-excludeEmpty: Components with no remaining voxels at a given 
-threshold are excluded from the total count. If false, they count as "failing".
+Find the signature threshold at which `targetPercentage` of connected components
+meet the `densityRequirement` (average density ≥ requirement).
+
+When `excludeEmpty=true`, components with no surviving voxels at a given threshold
+are excluded from the denominator.
 """
 function findComponentPercentageThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -505,14 +502,10 @@ end
 
 
 """
-Threshold based on connected component average density.
+    componentDensityThreshold!(feature, densityField, densityCutoff) -> (nQualifying, nTotal)
 
-Finds connected components and average density per component (total mass / volume).
-Keeps all components where average density ≥ densityCutoff.
-Marks voxels of qualifying components in thresholdMap.
-
-# Returns
-- Tuple of (number of qualifying components, total components)
+Keep only connected components whose average density ≥ `densityCutoff`.
+Returns counts of qualifying and total components.
 """
 function componentDensityThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -550,13 +543,8 @@ function componentDensityThreshold!(
 end
 
 
-"""
-Analyze component erosion by checking how many components survive at each threshold.
-
-# Returns
-- logThresholds: Log10 values of bin thresholds
-- survivalFractions: Fraction of components surviving at each threshold
-"""
+# Analyse how many connected components survive at each signature threshold.
+# Returns `(logThresholds, survivalFractions)`.
 function calculateComponentSurvival(
     feature::AbstractMorphologicalFeature,
     nBins::Int=100
@@ -599,8 +587,10 @@ end
 
 
 """
-Applies a flat threshold where the fraction of surviving components equals `targetPercent`.
-Default is 0.5 (50% survival point).
+    componentErosionPercentileThreshold!(feature [, targetPercent=0.5]; nBins=100) -> Float32
+
+Apply a threshold at the signature value where the fraction of surviving
+connected components equals `targetPercent`.
 """
 function componentErosionPercentileThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -644,9 +634,11 @@ end
 
 
 """
-Applies a threshold at the plateau where component elimination rate stabilizes.
-This is detected by finding where the rate of change (1st derivative magnitude) 
-drops below `rateThreshold` fraction of the maximum rate.
+    componentErosionPlateauThreshold!(feature; nBins=500, rateThreshold=0.05) -> Float32
+
+Apply a threshold where the component elimination rate stabilises (plateau).
+The plateau is detected where `|d(survival)/d(log S)|` drops below
+`rateThreshold` × max rate.
 """
 function componentErosionPlateauThreshold!(
     feature::AbstractMorphologicalFeature;

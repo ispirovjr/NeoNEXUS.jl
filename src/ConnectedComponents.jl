@@ -2,12 +2,14 @@
 # Identifies and stores contiguous regions of non-zero signature
 
 """
-A connected component representing a contiguous region of non-zero signature voxels.
+    ConnectedComponent
+
+A contiguous region of non-zero signature voxels identified by BFS.
 
 # Fields
-- `id::Int` — Unique identifier for this component
-- `voxels::Vector{CartesianIndex{3}}` — Indices of voxels in this component
-- `maxSignature::Float32` — Maximum signature value in this component
+- `id::Int` — unique identifier
+- `voxels::Vector{CartesianIndex{3}}` — voxel indices in this component
+- `maxSignature::Float32` — peak signature value in this component
 """
 struct ConnectedComponent
     id::Int
@@ -21,14 +23,10 @@ volume(cc::ConnectedComponent) = length(cc.voxels)
 
 
 """
-Find all connected components (contiguous regions of non-zero signature) in a 3D signature field.
-Uses 6-connectivity (face-adjacent voxels only, not diagonal).
+    findConnectedComponents(signatureMap) -> Vector{ConnectedComponent}
 
-# Arguments
-- `signatureMap`: 3D signature field
-
-# Returns
-- `Vector{ConnectedComponent}`: List of connected components, sorted in descending order by maximum signature 
+Find all connected components (6-connectivity) of non-zero voxels in a 3D field.
+Returns components sorted by maximum signature (descending).
 """
 function findConnectedComponents(signatureMap::AbstractArray{<:Real,3})
     dims = size(signatureMap)
@@ -91,11 +89,10 @@ end
 
 
 """
-Create a label map where each voxel is assigned its component ID (0 for background).
+    labelConnectedComponents(signatureMap) -> (labelMap, components)
 
-# Returns
-- `labelMap::Array{Int32,3}`: 3D array of component IDs
-- `components::Vector{ConnectedComponent}`: List of components
+Create a label map assigning each voxel its component ID (0 for background).
+Returns the `Int32` label array and the list of [`ConnectedComponent`](@ref)s.
 """
 function labelConnectedComponents(signatureMap::AbstractArray{<:Real,3})
     components = findConnectedComponents(signatureMap)
@@ -112,10 +109,9 @@ end
 
 
 """
-    componentAverageDensity(component, densityField)
+    componentAverageDensity(component, densityField) -> Float32
 
-Compute the average density of a connected component.
-Average density = total mass / volume = sum(density at voxels) / number of voxels.
+Average density of a connected component: `sum(density) / volume`.
 """
 function componentAverageDensity(cc::ConnectedComponent, densityField::AbstractArray{<:Real,3})
     totalMass = 0f0
@@ -127,10 +123,9 @@ end
 
 
 """
-Remove small connected components from a signature map by setting their values to zero.
+    pruneSmallComponents!(signatureMap, minVoxels) -> (nKept, nPruned, nVoxelsPruned)
 
-# Returns
-- Tuple of (nKept, nPruned, nVoxelsPruned)
+Zero out connected components with fewer than `minVoxels` voxels.
 """
 function pruneSmallComponents!(signatureMap::AbstractArray{<:Real,3}, minVoxels::Int)
     components = findConnectedComponents(signatureMap)
@@ -157,24 +152,10 @@ end
 
 
 """
-Remove small connected components from a feature's significance map.
-Convenience method that operates on a feature's significanceMap.
+    pruneSmallMassComponents!(signatureMap, densityField, minMass) -> (nKept, nPruned, nVoxelsPruned, massPruned)
 
-# Returns
-- Tuple of (nKept, nPruned, nVoxelsPruned)
-"""
-
-"""
-Remove connected components from a signature map that have a total mass less than `minMass`.
-Mass is calculated using the provided `densityField`.
-
-# Arguments
-- `signatureMap::AbstractArray{<:Real,3}`: 3D signature field (modified in-place)
-- `densityField::AbstractArray{<:Real,3}`: 3D density field for mass calculation
-- `minMass::Real`: Minimum total mass for a component to be kept
-
-# Returns
-- Tuple of (nKept, nPruned, nVoxelsPruned, massPruned)
+Zero out connected components whose total mass (sum of `densityField` at component
+voxels) is less than `minMass`.
 """
 function pruneSmallMassComponents!(
     signatureMap::AbstractArray{<:Real,3},
@@ -207,8 +188,11 @@ function pruneSmallMassComponents!(
     return (nKept, nPruned, nVoxelsPruned, massPruned)
 end
 
+"""
+    pruneSmallMassComponents!(feature, densityField, minMass)
+
+Convenience method operating on `feature.significanceMap`.
+"""
 function pruneSmallMassComponents!(feature::AbstractMorphologicalFeature, densityField::AbstractArray{<:Real,3}, minMass::Real)
     return pruneSmallMassComponents!(feature.significanceMap, densityField, minMass)
 end
-
-

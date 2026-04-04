@@ -1,4 +1,15 @@
-# Planar structures (walls): detected via λ1 < 0, |λ2/λ1| < 1, |λ3/λ1| < 1
+"""
+    SheetFeature <: AbstractMorphologicalFeature
+
+Detector for planar (wall) structures.
+
+Walls exhibit one dominant negative eigenvalue: λ1 < 0 with |λ2/λ1|, |λ3/λ1| < 1.
+
+# Fields
+- `significanceMap::Array{Float32,3}` — accumulated signature values
+- `thresholdMap::Array{Float32,3}` — binary classification mask
+- `kx, ky, kz::Vector{Float64}` — Fourier-space wavevectors
+"""
 struct SheetFeature <: AbstractMorphologicalFeature
     significanceMap::Array{Float32,3}
     thresholdMap::Array{Float32,3}
@@ -14,7 +25,18 @@ struct SheetFeature <: AbstractMorphologicalFeature
 end
 
 
-# Linear structures (filaments): detected via λ1 < 0, λ2 < 0, |λ3/λ1| < 1
+"""
+    LineFeature <: AbstractMorphologicalFeature
+
+Detector for linear (filament) structures.
+
+Filaments exhibit two dominant negative eigenvalues: λ1, λ2 < 0 with |λ3/λ1| < 1.
+
+# Fields
+- `significanceMap::Array{Float32,3}` — accumulated signature values
+- `thresholdMap::Array{Float32,3}` — binary classification mask
+- `kx, ky, kz::Vector{Float64}` — Fourier-space wavevectors
+"""
 struct LineFeature <: AbstractMorphologicalFeature
     significanceMap::Array{Float32,3}
     thresholdMap::Array{Float32,3}
@@ -29,7 +51,18 @@ struct LineFeature <: AbstractMorphologicalFeature
     end
 end
 
-# Nodal overdensities (spherical collapse): detected via λ1, λ2, λ3 < 0
+"""
+    NodeFeature <: AbstractMorphologicalFeature
+
+Detector for nodal (spherical collapse) structures.
+
+Nodes have all three eigenvalues negative: λ1, λ2, λ3 < 0.
+
+# Fields
+- `significanceMap::Array{Float32,3}` — accumulated signature values
+- `thresholdMap::Array{Float32,3}` — binary classification mask
+- `kx, ky, kz::Vector{Float64}` — Fourier-space wavevectors
+"""
 struct NodeFeature <: AbstractMorphologicalFeature
     significanceMap::Array{Float32,3}
     thresholdMap::Array{Float32,3}
@@ -45,13 +78,16 @@ struct NodeFeature <: AbstractMorphologicalFeature
 end
 
 """
-General signature evaluation function
+    (feature::AbstractMorphologicalFeature)(field [, cache, mode])
 
-Resolves eigencache based on mode (None, Read, Write)
-Calls signature function via multiple dispatch.
+Evaluate the morphological signature of `field`.
 
-Returns significance map.
-    """
+Computes Hessian eigenvalues (respecting `mode` ∈ {`None`, `Read`, `Write`}),
+then calls [`computeSignature`](@ref). Results are aggregated into
+`feature.significanceMap` via element-wise max across scales.
+
+Returns the per-voxel signature array for this invocation.
+"""
 function (feature::AbstractMorphologicalFeature)(
     field::AbstractArray{<:Real,3},
     cache::Union{Nothing,HessianEigenCache}=nothing,
@@ -78,9 +114,17 @@ end
 
 
 """
-Sheet signature: S = (1 - r21)(1 - r31)|λ1| when λ1 < 0 and both ratios < 1.
-Walls have one dominant negative eigenvalue (compression normal to wall).
+    computeSignature(feature, cache) -> Array{Float32,3}
+
+Compute the morphological signature for `feature` from Hessian eigenvalues
+stored in `cache`. Dispatches on the feature type:
+
+- [`SheetFeature`](@ref): `S = (1 - |λ2/λ1|)(1 - |λ3/λ1|)|λ1|` when λ1 < 0.
+- [`LineFeature`](@ref): `S = |λ2²/λ1|(1 - |λ3/λ1|)` when λ1, λ2 < 0.
+- [`NodeFeature`](@ref): `S = |λ3²/λ1|` when λ1, λ2, λ3 < 0.
 """
+function computeSignature end
+
 function computeSignature(feature::SheetFeature, cache::HessianEigenCache)
     S = zeros(Float32, size(cache.λ1))
 
@@ -111,10 +155,6 @@ function computeSignature(feature::SheetFeature, cache::HessianEigenCache)
 end
 
 
-"""
-Line signature: S = |λ2²/λ1|(1 - r31) when λ1, λ2 < 0 and r31 < 1.
-Filaments have two dominant negative eigenvalues (compression perpendicular to filament axis).
-"""
 function computeSignature(feature::LineFeature, cache::HessianEigenCache)
     S = zeros(Float32, size(cache.λ1))
 
@@ -144,10 +184,6 @@ function computeSignature(feature::LineFeature, cache::HessianEigenCache)
 end
 
 
-"""
-Node signature: S = |λ3²/λ1| when λ1, λ2, λ3 all < 0.
-Nodes have three negative eigenvalues (isotropic compression).
-"""
 function computeSignature(feature::NodeFeature, cache::HessianEigenCache)
     S = zeros(Float32, size(cache.λ1))
 

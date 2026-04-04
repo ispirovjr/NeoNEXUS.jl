@@ -3,6 +3,8 @@
 [![Julia](https://img.shields.io/badge/Julia-1.10+-blue.svg)](https://julialang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+[![CI](https://github.com/ispirovjr/NeoNEXUS/actions/workflows/CI.yml/badge.svg)](https://github.com/ispirovjr/NeoNEXUS/actions/workflows/CI.yml)
+
 **NeoNEXUS** is a modernized, modular, and high-performance implementation of the **Multi-scale Morphology Filter (MMF)** (later modernized as **NEXUS**) in Julia. It is designed to detect and classify multi-scale morphological structures in 3D scalar fields — including nodes, filaments, and walls.
 
 ## Introduction
@@ -31,7 +33,7 @@ In the era of "Big Data," scientific datasets are growing exponentially. Process
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/ispirovjr/NeoNEXUS.jl")
+Pkg.add("NeoNEXUS")
 ```
 
 For development:
@@ -170,11 +172,11 @@ julia --project=. demo/orchestrationDemo.jl
 
 The author would like to thank the following people for their contributions and assistance with this project:
 
-* **[Rien van de Weygaert]** - For [Supervision of the project and guidance through the process.]
+* **Rien van de Weygaert** - For Supervision of the project and guidance through the process.
 
-* **[Konstantin Spirov]** - For [Technical Guidance and Support, especially in the initial stages of the project.]
+* **Konstantin Spirov** - For Technical Guidance and Support, especially in the initial stages of the project.
 
-* **[Bram Alferink]**, **[Marius Cautun]** and **[Miguel Aragon-Calvo]** - For [Their previous implementations of the MMF and NEXUS+ algorithms, which served as a foundation for this project.]
+* **Bram Alferink**, **Marius Cautun** and **Miguel Aragon-Calvo** - For Their previous implementations of the MMF and NEXUS+ algorithms, which served as a foundation for this project.
 
 
 

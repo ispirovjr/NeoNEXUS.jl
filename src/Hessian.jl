@@ -1,8 +1,14 @@
 """
-Stores sorted eigenvalues λ1 ≤ λ2 ≤ λ3 per voxel
+    HessianEigenCache
 
-Should be used in between features for a given smoothing scale to avoid
-recomputing the same eigenvalues multiple times.
+Pre-allocated storage for sorted Hessian eigenvalues λ1 ≤ λ2 ≤ λ3 per voxel.
+
+Reuse between features at the same smoothing scale to avoid redundant FFTs.
+
+# Fields
+- `λ1::Array{Float32,3}` — smallest eigenvalue
+- `λ2::Array{Float32,3}` — middle eigenvalue
+- `λ3::Array{Float32,3}` — largest eigenvalue
 """
 struct HessianEigenCache
     λ1::Array{Float32,3}
@@ -10,6 +16,11 @@ struct HessianEigenCache
     λ3::Array{Float32,3}
 end
 
+"""
+    HessianEigenCache(Nx, Ny, Nz)
+
+Construct an uninitialised `HessianEigenCache` of size `(Nx, Ny, Nz)`.
+"""
 function HessianEigenCache(Nx::Int, Ny::Int, Nz::Int)
     return HessianEigenCache(
         Array{Float32}(undef, Nx, Ny, Nz),
@@ -20,10 +31,10 @@ end
 
 
 """
-    computeHessianEigenvalues(field) -> HessianEigenCache
+    computeHessianEigenvalues(field, kx, ky, kz) -> HessianEigenCache
 
-Compute Hessian eigenvalues of a scalar field using Fourier derivatives.
-Allocates and returns an eigenvalue cache.
+Compute Hessian eigenvalues of a 3D scalar field using Fourier-space derivatives.
+Allocates and returns a new [`HessianEigenCache`](@ref).
 """
 function computeHessianEigenvalues(
     field::AbstractArray{<:Real,3},
@@ -40,9 +51,9 @@ end
 
 
 """
-    computeHessianEigenvalues!(field,cache)
+    computeHessianEigenvalues!(field, kx, ky, kz, cache)
 
-Compute Hessian eigenvalues of `field` and store them in `cache`.
+Compute Hessian eigenvalues of `field` in-place, storing results in `cache`.
 """
 function computeHessianEigenvalues!(
     field::AbstractArray{<:Real,3},
@@ -79,6 +90,7 @@ function computeHessianEigenvalues!(
     return cache
 end
 
+# Compute all 6 unique Hessian components from the FFT of a scalar field.
 function computeHessianComponents!(
     fftField, tmp,
     kx, ky, kz,
@@ -108,18 +120,8 @@ function computeHessianComponents!(
 end
 
 
-"""
-    eigvals3x3sym(a11, a22, a33, a12, a13, a23)
-
-Analytical eigenvalues of a 3×3 symmetric matrix using Cardano's formula.
-Returns sorted eigenvalues (λ1 ≤ λ2 ≤ λ3).
-
-The characteristic polynomial of a 3×3 symmetric matrix is a depressed cubic.
-This implementation uses the trigonometric solution (all roots are real for symmetric matrices).
-
-Note: All internal computation is done in Float64 for numerical stability,
-regardless of the input type.
-"""
+# Analytical eigenvalues of a 3×3 symmetric matrix via Cardano's formula.
+# Returns sorted (λ1 ≤ λ2 ≤ λ3). All computation in Float64 for stability.
 @inline function eigvals3x3sym(a11::T, a22::T, a33::T, a12::T, a13::T, a23::T) where {T<:Real}
     # Promote to Float64 internally for numerical stability near degenerate cases
     d11 = Float64(a11)
@@ -180,6 +182,7 @@ regardless of the input type.
 end
 
 
+# Solve eigenvalues for every voxel and store in cache.
 function computeEigenvalues!(
     Hxx, Hyy, Hzz, Hxy, Hxz, Hyz,
     cache::HessianEigenCache
@@ -197,10 +200,7 @@ end
 # Extract k-vector component based on dimension (1=x, 2=y, 3=z)
 @inline selectK(kVec, i, j, k, dim) = dim == 1 ? kVec[i] : (dim == 2 ? kVec[j] : kVec[k])
 
-"""
-Compute Hessian component in Fourier space: ∂²/∂α∂β → -kα·kβ·f̂(k)
-Uses 1D k-vectors and dimension indices to construct full 3D derivatives.
-"""
+# Compute one Hessian component in Fourier space: ∂²/∂α∂β → -kα·kβ·f̂(k).
 @inline function hessianComp!(tmp, fftField, kα, kβ, dimα::Int, dimβ::Int)
     Nx, Ny, Nz = size(fftField)
 
@@ -212,6 +212,3 @@ Uses 1D k-vectors and dimension indices to construct full 3D derivatives.
 
     return nothing
 end
-
-
-

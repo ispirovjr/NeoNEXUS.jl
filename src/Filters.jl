@@ -1,13 +1,19 @@
 """
-GaussianFourierFilter struct. Carries k-vectors for Fourier space filtering.
-Uses functor pattern for filtering once created (see below).
+    GaussianFourierFilter <: AbstractScaleFilter
+
+Gaussian smoothing filter applied in Fourier space.
+
+Smoothing kernel: `exp(-k²R²/2)` where `R` is the smoothing scale.
+
+# Constructors
+    GaussianFourierFilter(gridSize::Tuple{Int,Int,Int})
+    GaussianFourierFilter(kx, ky, kz)
 """
 struct GaussianFourierFilter <: AbstractScaleFilter
     kx::Vector{Float64}
     ky::Vector{Float64}
     kz::Vector{Float64}
 
-    # Constructor that just takes box sizes
     function GaussianFourierFilter(gridSize::Tuple{Int,Int,Int})
         Nx, Ny, Nz = gridSize
         kx = FFTW.fftfreq(Nx) .* 2π
@@ -16,7 +22,6 @@ struct GaussianFourierFilter <: AbstractScaleFilter
         return new(collect(Float64, kx), collect(Float64, ky), collect(Float64, kz))
     end
 
-    # Constructor that takes k-vectors directly (collects to Vector{Float64} since FFTW returns Frequency Vector)
     function GaussianFourierFilter(kx, ky, kz)
         return new(collect(Float64, kx), collect(Float64, ky), collect(Float64, kz))
     end
@@ -25,9 +30,9 @@ end
 
 
 """
-Standard Gaussian filtering in Fourier space:
-    filtered = IFFT( FFT(field) * exp(-k²R²/2) )
-where R = scale.
+    (filter::GaussianFourierFilter)(field, R)
+
+Apply Gaussian smoothing at scale `R`: `IFFT(FFT(field) ⋅ exp(-k²R²/2))`.
 """
 function (filter::GaussianFourierFilter)(
     densityField::AbstractArray{<:Real,3},
@@ -48,7 +53,9 @@ function (filter::GaussianFourierFilter)(
 end
 
 """
-For NodeFeature: use standard (linear) Gaussian filtering.
+    (filter::GaussianFourierFilter)(field, scale, feature::NodeFeature)
+
+Linear Gaussian filtering for nodes (no log transform).
 """
 function (filter::GaussianFourierFilter)(
     densityField::AbstractArray{<:Real,3},
@@ -59,17 +66,16 @@ function (filter::GaussianFourierFilter)(
 end
 
 """
-For Sheet/Line features: use log-filtering.
-Process: log₁₀(density) → Gaussian filter → 10^(result)
-NEXUS+ behavior
+    (filter::GaussianFourierFilter)(field, scale, feature::AbstractMorphologicalFeature)
+
+Log-Gaussian filtering for sheets/filaments (NEXUS+ behaviour):
+`log₁₀(field) → Gaussian filter → 10^result`.
 """
 function (filter::GaussianFourierFilter)(
     densityField::AbstractArray{<:Real,3},
     scale::Real,
     feature::AbstractMorphologicalFeature
 )
-    # Log-filtering: take log, filter, then exponentiate
-    # Add small epsilon to avoid log(0)
     logField = log10.(max.(densityField, eps(Float32)))
     filteredLog = filter(logField, scale)
     return 10.0 .^ filteredLog
@@ -77,8 +83,15 @@ end
 
 
 """
-TopHatFourierFilter struct. Carries k-vectors for Fourier space filtering.
-Top Hat in Real Space, applied via Fourier. Corresponds to a Bessel Function.
+    TopHatFourierFilter <: AbstractScaleFilter
+
+Top-hat smoothing filter applied via Fourier space (spherical top-hat in real space).
+
+Kernel: `3(sin(kR) - kR⋅cos(kR)) / (kR)³`.
+
+# Constructors
+    TopHatFourierFilter(gridSize::Tuple{Int,Int,Int})
+    TopHatFourierFilter(kx, ky, kz)
 """
 struct TopHatFourierFilter <: AbstractScaleFilter
     kx::Vector{Float64}
@@ -98,6 +111,11 @@ struct TopHatFourierFilter <: AbstractScaleFilter
     end
 end
 
+"""
+    (filter::TopHatFourierFilter)(field, R)
+
+Apply spherical top-hat smoothing at scale `R` in Fourier space.
+"""
 function (filter::TopHatFourierFilter)(
     densityField::AbstractArray{<:Real,3},
     R::Real
@@ -122,12 +140,20 @@ function (filter::TopHatFourierFilter)(
     return FFTW.irfft(fftField, Nx)
 end
 
-# Default implementation
+"""
+    (filter::TopHatFourierFilter)(field, scale, feature::NodeFeature)
+
+Linear top-hat filtering for nodes (no log transform).
+"""
 function (filter::TopHatFourierFilter)(densityField::AbstractArray{<:Real,3}, scale::Real, feature::NodeFeature)
     return filter(densityField, scale)
 end
 
-# NEXUS+ behavior
+"""
+    (filter::TopHatFourierFilter)(field, scale, feature::AbstractMorphologicalFeature)
+
+Log–top-hat filtering for sheets/filaments (NEXUS+ behaviour).
+"""
 function (filter::TopHatFourierFilter)(densityField::AbstractArray{<:Real,3}, scale::Real, feature::AbstractMorphologicalFeature)
     logField = log10.(max.(densityField, eps(Float32)))
     filteredLog = filter(logField, scale)
