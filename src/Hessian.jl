@@ -74,15 +74,21 @@ function computeHessianEigenvalues!(
 
     # Allocate zeroed-Nyquist wavevectors to preserve Hermitian symmetry in cross-derivatives
     Ny, Nz = size(field, 2), size(field, 3)
-    kx_odd = copy(kx)
-    kx_odd[end] = 0.0  # rfftfreq ends at Nyquist
-    ky_odd = copy(ky)
-    ky_odd[Ny÷2+1] = 0.0  # fftfreq has Nyquist at N/2 + 1
-    kz_odd = copy(kz)
-    kz_odd[Nz÷2+1] = 0.0
-
+    kxOdd = copy(kx)
+    kyOdd = copy(ky)
+    kzOdd = copy(kz)
+    
+    if iseven(Nx)
+        kxOdd[end] = 0.0  # rfftfreq ends at Nyquist for even cases
+    end
+    if iseven(Ny)
+        kyOdd[Ny÷2+1] = 0.0  # fftfreq has Nyquist at N/2 + 1    
+    end
+    if iseven(Nz)
+       kzOdd[Nz÷2+1] = 0.0
+    end
     # Compute all 6 Hessian components in Real Space
-    computeHessianComponents!(fftField, tmp, kx, ky, kz, kx_odd, ky_odd, kz_odd, Hxx, Hyy, Hzz, Hxy, Hxz, Hyz, Nx)
+    computeHessianComponents!(fftField, tmp, kx, ky, kz, kxOdd, kyOdd, kzOdd, Hxx, Hyy, Hzz, Hxy, Hxz, Hyz, Nx)
 
     # Compute eigenvalues (λ1, λ2, λ3) for every voxel directly into cache
     computeEigenvalues!(Hxx, Hyy, Hzz, Hxy, Hxz, Hyz, cache)
@@ -94,7 +100,7 @@ end
 function computeHessianComponents!(
     fftField, tmp,
     kx, ky, kz,
-    kx_odd, ky_odd, kz_odd,
+    kxOdd, kyOdd, kzOdd,
     Hxx::AbstractArray{<:Real,3}, Hyy::AbstractArray{<:Real,3}, Hzz::AbstractArray{<:Real,3},
     Hxy::AbstractArray{<:Real,3}, Hxz::AbstractArray{<:Real,3}, Hyz::AbstractArray{<:Real,3},
     Nx::Int
@@ -109,11 +115,11 @@ function computeHessianComponents!(
 
     # Off-diagonal components (∂²/∂x∂y, ∂²/∂x∂z, ∂²/∂y∂z)
     # MUST use odd k-vectors to preserve Hermitian symmetry across the Nyquist frequencies
-    hessianComp!(tmp, fftField, kx_odd, ky_odd, 1, 2)
+    hessianComp!(tmp, fftField, kxOdd, kyOdd, 1, 2)
     Hxy .= FFTW.irfft(tmp, Nx)
-    hessianComp!(tmp, fftField, kx_odd, kz_odd, 1, 3)
+    hessianComp!(tmp, fftField, kxOdd, kzOdd, 1, 3)
     Hxz .= FFTW.irfft(tmp, Nx)
-    hessianComp!(tmp, fftField, ky_odd, kz_odd, 2, 3)
+    hessianComp!(tmp, fftField, kyOdd, kzOdd, 2, 3)
     Hyz .= FFTW.irfft(tmp, Nx)
 
     return nothing
@@ -145,8 +151,8 @@ end
 
     if p <= 0.0
         # All eigenvalues are equal (A = c0*I)
-        c0_T = T(c0)
-        return (c0_T, c0_T, c0_T)
+        c0T = T(c0)
+        return (c0T, c0T, c0T)
     end
 
     # q = det(B) / 2

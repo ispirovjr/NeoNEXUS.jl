@@ -2,8 +2,8 @@
 
 [![Julia](https://img.shields.io/badge/Julia-1.10+-blue.svg)](https://julialang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-[![CI](https://github.com/ispirovjr/NeoNEXUS/actions/workflows/CI.yml/badge.svg)](https://github.com/ispirovjr/NeoNEXUS/actions/workflows/CI.yml)
+[![CI](https://github.com/ispirovjr/NeoNEXUS.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/ispirovjr/NeoNEXUS.jl/actions/workflows/CI.yml)
+[![Documentation](https://github.com/ispirovjr/NeoNEXUS.jl/actions/workflows/Documentation.yml/badge.svg)](https://github.com/ispirovjr/NeoNEXUS.jl/actions/workflows/Documentation.yml)
 
 **NeoNEXUS** is a modernized, modular, and high-performance implementation of the **Multi-scale Morphology Filter (MMF)** (later modernized as **NEXUS**) in Julia. It is designed to detect and classify multi-scale morphological structures in 3D scalar fields — including nodes, filaments, and walls.
 
@@ -12,6 +12,10 @@
 In the era of "Big Data," scientific datasets are growing exponentially. Processing this data requires efficient, automated tools.
 
 **NeoNEXUS** (Network Extraction via Unsupervised Scale-space) addresses this by providing a physically motivated, training-free morphological analysis framework. Originating from medical imaging, it identifies structures based on local geometry (Hessian eigenvalues) rather than simple density thresholds.
+
+### API Documentation
+
+For detailed API documentation, please refer to the [**API Documentation**](https://ispirovjr.github.io/NeoNEXUS.jl/).
 
 ### Key Philosophy
 *   **Modularity**: Decoupled architecture allows users to easily swap filters, feature definitions, and thresholding logic.
