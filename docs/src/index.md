@@ -1,6 +1,6 @@
 # NeoNEXUS.jl
 
-**NeoNEXUS** is a modular, high-performance implementation of the Multi-scale Morphology Filter (MMF / NEXUS) in Julia. It detects and classifies multi-scale morphological structures — nodes, filaments, and walls — in 3D scalar fields.
+**NeoNEXUS** is a Julia package for multi-scale, Hessian-based morphology analysis on 3D scalar fields. It exposes low-level tools for filters, Hessian eigenvalues, feature signatures, thresholding, and connected components, together with higher-level MMF and NEXUS+ runners.
 
 ## Installation
 
@@ -12,24 +12,35 @@ Pkg.add("NeoNEXUS")
 ## Quick Start
 
 ```julia
-using NeoNEXUS, FFTW
+using NeoNEXUS
 
 N = 64
-kx = ky = kz = fftfreq(N) .* N .* 2π
+density = abs.(randn(Float32, N, N, N)) .+ 1f0
+scales = [sqrt(2.0)^n for n in 1:4]
 
-sheet = SheetFeature((N, N, N), kx, ky, kz)
-density = randn(Float32, N, N, N)
+runner = NEXUSPlus(N, scales)
+thresholds = runner(density)
 
-sig = sheet(density)
-println("Max sheet signature: ", maximum(sig))
+println(thresholds)
+println(sum(runner.filament.thresholdMap))
 ```
 
-## Overview
+## What the Package Provides
 
-The package provides:
+- **Features**: [`SheetFeature`](@ref), [`LineFeature`](@ref), and [`NodeFeature`](@ref) compute wall, filament, and node signatures.
+- **Filters**: [`GaussianFourierFilter`](@ref) and [`TopHatFourierFilter`](@ref) smooth fields in Fourier space.
+- **Thresholding**: flat, mass-based, density-based, `deltaMSquaredThreshold!`, and connected-component threshold helpers are available.
+- **Connected components**: post-processing utilities identify, label, and prune 6-connected structures.
+- **Runners**: [`MMFClassic`](@ref), [`NEXUSPlus`](@ref), and [`runMultithreaded`](@ref) support end-to-end workflows.
 
-- **Filters** ([`GaussianFourierFilter`](@ref), [`TopHatFourierFilter`](@ref)) for Fourier-space smoothing.
-- **Features** ([`SheetFeature`](@ref), [`LineFeature`](@ref), [`NodeFeature`](@ref)) for Hessian-based morphological classification.
-- **Thresholding** functions for noise suppression and structure selection.
-- **Connected component** analysis for post-processing.
-- **Pipelines** ([`MMFClassic`](@ref), [`NEXUSPlus`](@ref)) for end-to-end analysis.
+## Usage Notes
+
+- The package currently operates on 3D arrays.
+- `NEXUSPlus(gridSize, scales)` is a convenience constructor for cubic grids.
+- `run(runner::NEXUSPlus, densityField)` normalizes the density field internally.
+- Feature objects and runners are stateful: their `significanceMap` and `thresholdMap` arrays are stored on the structs and reused across calls.
+
+## Next Steps
+
+- See [Workflow](workflow.md) for the high-level processing stages and the difference between `MMFClassic` and `NEXUSPlus`.
+- See [API Reference](api.md) for the exported types and functions.

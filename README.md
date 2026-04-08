@@ -5,33 +5,15 @@
 [![CI](https://github.com/ispirovjr/NeoNEXUS.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/ispirovjr/NeoNEXUS.jl/actions/workflows/CI.yml)
 [![Documentation](https://github.com/ispirovjr/NeoNEXUS.jl/actions/workflows/Documentation.yml/badge.svg)](https://github.com/ispirovjr/NeoNEXUS.jl/actions/workflows/Documentation.yml)
 
-**NeoNEXUS** is a modernized, modular, and high-performance implementation of the **Multi-scale Morphology Filter (MMF)** (later modernized as **NEXUS**) in Julia. It is designed to detect and classify multi-scale morphological structures in 3D scalar fields — including nodes, filaments, and walls.
+**NeoNEXUS** is a Julia package for multi-scale, Hessian-based morphology analysis on 3D scalar fields. It provides low-level building blocks for filters, Hessian eigenvalues, feature signatures, thresholding, and connected-component analysis, plus higher-level runners for MMF-style and NEXUS+-style workflows.
 
-## Introduction
+The package currently works on 3D arrays and exposes three morphological feature detectors:
 
-In the era of "Big Data," scientific datasets are growing exponentially. Processing this data requires efficient, automated tools.
+- `SheetFeature` for walls / sheets
+- `LineFeature` for filaments
+- `NodeFeature` for nodes
 
-**NeoNEXUS** (Network Extraction via Unsupervised Scale-space) addresses this by providing a physically motivated, training-free morphological analysis framework. Originating from medical imaging, it identifies structures based on local geometry (Hessian eigenvalues) rather than simple density thresholds.
-
-### API Documentation
-
-For detailed API documentation, please refer to the [**API Documentation**](https://ispirovjr.github.io/NeoNEXUS.jl/).
-
-### Key Philosophy
-*   **Modularity**: Decoupled architecture allows users to easily swap filters, feature definitions, and thresholding logic.
-*   **Performance**: Built in Julia, leveraging **multiple dispatch**, **functors**, and a **singleton pattern** for memory-efficient caching of heavy computations (FFTs, Eigenvalues).
-*   **Domain Agnostic**: The core logic applies to any scalar field — cosmology, medical imaging, materials science, and more.
-
-## Features
-
-*   **Multiscale Analysis**: Detects structures at various smoothing scales to capture hierarchical geometry.
-*   **Morphological Classifiers**:
-    *   **Nodes**: Spherical collapse ($\lambda_1, \lambda_2, \lambda_3 < 0$).
-    *   **Filaments**: Cylindrical collapse ($\lambda_1, \lambda_2 < 0$).
-    *   **Sheets (Walls)**: Planar collapse ($\lambda_1 < 0$).
-*   **Optimized Computation**:
-    *   **HessianEigenCache**: Singleton structure to reuse eigenvalue computations across different features at the same scale/filter setting, preventing redundant FFTs.
-    *   **Explicit Control**: `Read`/`Write` cache modes allow fine-grained memory management.
+Full API docs are available at [ispirovjr.github.io/NeoNEXUS.jl](https://ispirovjr.github.io/NeoNEXUS.jl/).
 
 ## Installation
 
@@ -40,147 +22,145 @@ using Pkg
 Pkg.add("NeoNEXUS")
 ```
 
-For development:
-```julia
-using Pkg
-Pkg.develop(path="path/to/NeoNEXUS")
-```
-
 ## Quick Start
-Here is a functional example of detecting "Sheet" (Wall) structures in a random noise field.
+
+The highest-level entry point is `NEXUSPlus`, which builds a node / filament / wall pipeline for a cubic grid:
 
 ```julia
 using NeoNEXUS
-using FFTW
-using Statistics
 
-# 1. Setup Grid & K-Space
 N = 64
-L = 1.0
-dx = L / N
-axis = range(-L/2 + dx/2, L/2 - dx/2, length=N)
-kx = ky = kz = fftfreq(N) .* N .* 2π  # Standard circular frequency setup
+density = abs.(randn(Float32, N, N, N)) .+ 1f0 # load data
+scales = [sqrt(2.0)^n for n in 1:4]
 
-# 2. Initialize Feature Detector
-# We create a SheetFeature (Wall) detector
-sheet = SheetFeature((N, N, N), kx, ky, kz)
+runner = NEXUSPlus(N, scales)
+thresholds = runner(density)
 
-# 3. Create/Load Data
-# Using random noise for demonstration
-density_field = randn(Float32, N, N, N)
-
-# 4. Compute Significance Map
-# properties(field) calls the functor which handles:
-# - Hessian computation (using FFTs)
-# - Eigenvalue decomposition
-# - Signature calculation based on geometry
-signature_map = sheet(density_field)
-
-println("Max sheet signature: ", maximum(signature_map))
-
-# 5. Access Results
-# The feature object itself stores accumulated significance across scales if run in a loop
-# (For a single scale, it matches the return value)
-println("Stored significance max: ", maximum(sheet.significanceMap))
+println(thresholds)
+println(sum(runner.wall.thresholdMap))
 ```
 
-## Architecture & Methodology
+`NEXUSPlus(N, scales)` assumes a cubic grid. For non-cubic grids, custom filters, or lower-level control, construct the filter and feature objects manually and call the features or runners directly.
 
-NeoNEXUS reimagines the classic MMF/NEXUS pipeline with software engineering best practices.
+## Pipeline Overview
 
-### Workflow
-The analysis follows a two-stage loop process:
+The package follows a two-stage workflow: multi-scale signature extraction first, hierarchical thresholding second.
 
-1.  **Signature Computation Loop**:
-    *   Iterate over **Scales** ($R_1, R_2, \dots$).
-    *   Apply **Filter** (e.g., Gaussian) to the scalar field.
-    *   Compute **Hessian Eigenvalues** ($\lambda_1 \le \lambda_2 \le \lambda_3$).
-    *   Evaluate **Feature Signatures** (Response functions) for all requested features (Nodes, Filaments, Sheets).
-    *   *Optimization*: The Hessian is computed once per scale and cached (`HessianEigenCache`) for all features.
+```mermaid
+flowchart LR
+    subgraph Extraction["Multi-Scale Signature Extract"]
+        direction TB
+        Scale["For each scale R"] --> Filter["Filter field"]
+        Filter --> Hessian["Compute Hessian eigenvalues"]
+        Hessian --> Feature["For each feature"]
+        Feature --> Signature["Compute signature and update max map"]
+        Signature -.-> Feature
+        Feature -.-> Scale
+    end
 
-2.  **Thresholding Loop**:
-    *   After aggregating signatures across scales (max-pooling), a global noise threshold is applied.
-    *   Features are masked hierarchically (e.g., Filaments mask Nodes) to ensure clean segmentation.
+    Extraction ==> Cleaning
 
-### Components
-*   **Features (`AbstractMorphologicalFeature`)**: Defines the geometric signature (e.g., `SheetFeature`, `LineFeature`, `NodeFeature`). They act as functors `feature(field)` to compute maps.
-*   **Filters (`AbstractScaleFilter`)**: Handles smoothing in Fourier space (e.g., `GaussianFourierFilter`).
-*   **Hessian**: Core module for computing derivatives via FFTs. Uses explicit caching strategies (`Read`, `Write`, `None`) to manage memory.
+    subgraph Cleaning["Hierarchical Clean and Threshold"]
+        direction TB
+        CleanFeature["For each feature"] --> Mask["Mask voxels claimed by earlier features"]
+        Mask --> Threshold["Apply threshold rule"]
+        Threshold --> Store["Store threshold map"]
+        Store -.-> CleanFeature
+    end
+```
 
-## Use Cases
+In concrete terms:
 
-### Astrophysics
-*   **Stellar Streams**: Detecting linear structures in galactic density fields for Galactic Archaeology.
-*   **Phase Space Analysis**: Identifying structures in HR Diagrams or the Fundamental Plane of elliptical galaxies.
+1. For each smoothing scale, NeoNEXUS filters the field, computes Hessian eigenvalues once, and evaluates one or more feature signatures.
+2. Each feature keeps the voxel-wise maximum signature across scales in `significanceMap`.
+3. After the scale loop, thresholding produces binary `thresholdMap`s and optionally masks later features with earlier ones.
 
-### Engineering & Materials
-*   **Fracture Detection**: Inverting the density field allows detection of "negative" density features like cracks or voids in materials.
-*   **Microstructure Analysis**: Identifying patterns in alloy compositions.
+## Main Components
 
-### Medicine
-*   **Vascular Mapping**: Tracing blood vessels (tubular/filamentary structures).
-*   **Tumor Detection**: Identifying nodular growths in 3D scans.
+### Features
 
-### Cosmology
-For cosmology-specific extensions (tidal tensor classification, velocity divergence analysis), see **[CosmoNEXUS](https://github.com/ispirovjr/CosmoNEXUS.jl)**.
+- `SheetFeature`, `LineFeature`, and `NodeFeature` are callable functors.
+- Calling a feature on a field returns the signature map for that invocation and updates the feature's stored `significanceMap` with a voxel-wise max.
+- Features can reuse a shared `HessianEigenCache` via the `Read`, `Write`, and `None` cache modes.
+
+### Filters
+
+- `GaussianFourierFilter` and `TopHatFourierFilter` smooth fields in Fourier space.
+- Both filters provide feature-specific dispatch: node filtering is linear, while the generic `AbstractMorphologicalFeature` path applies log-space filtering.
+
+### Thresholding and Cleanup
+
+- Threshold helpers include flat, volume-based, mass-based, average-density, `deltaMSquaredThreshold!`, and connected-component-based methods.
+- Connected components use 6-connectivity.
+- Utilities such as `maskSignatureMap!`, `findConnectedComponents`, `pruneSmallComponents!`, and `pruneSmallMassComponents!` support post-processing.
+
+### Runners
+
+- `MMFClassic` runs a configurable feature list across a set of scales, reuses a shared Hessian cache inside each scale, and thresholds features in the order they are supplied with `componentErosionPlateauThreshold!`.
+- `NEXUSPlus` provides a fixed node -> filament -> wall workflow. Nodes are thresholded with `findComponentPercentageThreshold!`; filaments and walls are thresholded with `deltaMSquaredThreshold!`.
+- `runMultithreaded` parallelizes the scale loop for `NEXUSPlus`.
+
+## Important Notes
+
+- Feature objects and runners are stateful. Their `significanceMap` and `thresholdMap` arrays live on the structs and are reused across calls. Recreate them, or clear those arrays manually, before processing a new dataset.
+- `run(runner::NEXUSPlus, densityField)` normalizes the input field to mean density 1 internally.
+- The log-filtered NEXUS+ paths are intended for positive density fields. Non-positive values are clamped to `eps(Float32)` before taking `log10`.
+- The convenience constructor `NEXUSPlus(gridSize::Int, scales)` is for cubic grids only.
+
+## Repository Demos
+
+The repository includes two demo scripts and a sample density cube:
+
+- `demo/quickStartDemo.jl` loads `demo/exampleDensity.jld2`, runs `NEXUSPlus`, and saves a contour overlay figure.
+- `demo/multithreadDemo.jl` compares `run` and `runMultithreaded` on the same input using separate runner instances.
+- `demo/exampleDensity.jld2` is the dataset used by both demos.
+
+You can run them from the repository root with:
+
+```bash
+julia demo/quickStartDemo.jl
+julia --threads=4 demo/multithreadDemo.jl
+```
 
 ## Project Structure
 
-```
+```text
 NeoNEXUS/
-├── src/
-│   ├── NeoNEXUS.jl           # Module entry point & exports
-│   ├── Types.jl              # Abstract types & Enums (CacheMode)
-│   ├── Hessian.jl            # FFT-based Hessian & Eigenvalue computation
-│   ├── Features.jl           # Sheet, Line, Node feature definitions
-│   ├── Filters.jl            # Scale-space filters (Gaussian, Log-Gaussian, TopHat)
-│   ├── Thresholds.jl         # Thresholding functions (volume, mass, ΔM², etc.)
-│   ├── ConnectedComponents.jl # Connected component analysis & pruning
-│   └── Runner.jl             # Pipeline orchestration (MMFClassic, NEXUSPlus)
-├── test/
-│   ├── runtests.jl           # Test suite entry point
-│   ├── testHessians.jl       # Hessian computation tests
-│   ├── testFeatureSignatureMap.jl  # Feature signature tests
-│   ├── testFilters.jl        # Filter tests
-│   ├── testThresholds.jl     # Thresholding function tests
-│   ├── testConnectedComponents.jl  # Connected component tests
-│   └── testOrchestration.jl  # Pipeline orchestration tests
-└── demo/
-    ├── orchestrationDemo.jl  # Demo comparing MMFClassic vs NEXUSPlus
-    ├── quickStartDemo.jl     # Minimal quick-start example
-    └── multithreadDemo.jl    # Multithreaded scaling demo
-```
-
-## Two Orchestration Methods
-
-NeoNEXUS provides two complete pipelines:
-
-### MMFClassic
-The classic Multi-scale Morphology Filter (Aragón-Calvo et al. 2007):
-- Linear Gaussian filtering at multiple scales
-- Processes features: Sheets → Filaments → Nodes
-- Plateau-based thresholding (component erosion stability)
-
-### NEXUSPlus
-The enhanced NEXUS+ method (Cautun et al. 2013):
-- Linear filtering for Nodes, Log-Gaussian for Filaments/Walls
-- Processes features: Nodes → Filaments → Walls
-- Density-based thresholding for Nodes, ΔM² peak for others
-
-Run the demo to compare both methods:
-```bash
-julia --project=. demo/orchestrationDemo.jl
+|-- src/
+|   |-- NeoNEXUS.jl             # Module entry point and exports
+|   |-- Types.jl                # Abstract types and cache modes
+|   |-- Hessian.jl              # FFT-based Hessian eigenvalue computation
+|   |-- Features.jl             # Sheet, line, and node signatures
+|   |-- Filters.jl              # Fourier-space smoothing filters
+|   |-- Thresholds.jl           # Thresholding and masking utilities
+|   |-- ConnectedComponents.jl  # Connected-component analysis and pruning
+|   `-- Runner.jl               # MMFClassic and NEXUSPlus runners
+|-- test/
+|   |-- runtests.jl
+|   |-- testHessians.jl
+|   |-- testFeatureSignatureMap.jl
+|   |-- testFilters.jl
+|   |-- testThresholds.jl
+|   |-- testConnectedComponents.jl
+|   `-- testOrchestration.jl
+|-- demo/
+|   |-- Project.toml
+|   |-- Manifest.toml
+|   |-- quickStartDemo.jl
+|   |-- multithreadDemo.jl
+|   `-- exampleDensity.jld2
+`-- docs/
+    |-- make.jl
+    `-- src/
+        |-- index.md
+        |-- workflow.md
+        `-- api.md
 ```
 
 ## Acknowledgements
 
 The author would like to thank the following people for their contributions and assistance with this project:
 
-* **Rien van de Weygaert** - For Supervision of the project and guidance through the process.
-
-* **Konstantin Spirov** - For Technical Guidance and Support, especially in the initial stages of the project.
-
-* **Bram Alferink**, **Marius Cautun** and **Miguel Aragon-Calvo** - For Their previous implementations of the MMF and NEXUS+ algorithms, which served as a foundation for this project.
-
-
-
+- **Rien van de Weygaert** for supervising the project and guiding the work.
+- **Konstantin Spirov** for technical guidance and support, especially in the initial stages.
+- **Bram Alferink**, **Marius Cautun**, and **Miguel Aragon-Calvo** for prior MMF / NEXUS+ implementations that informed this package.

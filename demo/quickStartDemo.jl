@@ -3,37 +3,40 @@
 NeoNEXUS Quick Start Demo
 =#
 
+using Pkg
+Pkg.activate(@__DIR__)
+pushfirst!(LOAD_PATH, normpath(joinpath(@__DIR__, "..")))
+
 using NeoNEXUS
-using HDF5
-using FFTW
-using Statistics
+using JLD2
 using Plots
 
-densityPath = joinpath(@__DIR__, "exampleDensity.h5")
-densityRaw = Float32.(h5open(densityPath, "r") do file
-    return read(file, "densityfield")
-end)
-densityRaw = max.(densityRaw, 1f-6)  # Ensure positive for log filtering
+densityPath = joinpath(@__DIR__, "exampleDensity.jld2")
+densityRaw = Float32.(load(densityPath)["grid"])
 
 gridSize = size(densityRaw, 1)
-meanDensity = mean(densityRaw)
-normDensity = densityRaw ./ meanDensity
-
-scales = [sqrt(2)^n for n in 2:2:8]
+scales = [sqrt(2)^n for n in 1:4]
 
 runner = NEXUSPlus(gridSize, scales)
+thresholds = runner(densityRaw)
 
-thresholds = NeoNEXUS.run(runner, normDensity)
+sliceIndex = gridSize ÷ 2
+slice = log10.(densityRaw[:, :, sliceIndex])
+slice = (slice .- minimum(slice)) ./ (maximum(slice) - minimum(slice))
 
-slice = log10.(densityRaw[:, :, gridSize÷2])
+heatmap(
+    slice;
+    aspect_ratio=:equal,
+    color=:acton,
+    title="Density Field (Slice z=$sliceIndex)",
+    colorbar=false,
+    axis=false,
+    grid=false,
+)
 
-cl = extrema(slice)
+contour!(runner.wall.thresholdMap[:, :, sliceIndex], levels=1, color=:blue, linewidth=2, fill=false)
+contour!(runner.filament.thresholdMap[:, :, sliceIndex], levels=1, color=:green, linewidth=2, fill=false)
+contour!(runner.node.thresholdMap[:, :, sliceIndex], levels=5, color=:red, linewidth=2, fill=false)
 
-heatmap(slice, aspect_ratio=:equal, color=:acton, title="Density Field (Slice z=$(gridSize÷2))", clim=cl, colorbar=false, axis=false, grid=false)
-
-contour!(runner.wall.thresholdMap[:, :, gridSize÷2] .* 100, levels=1, color=:blue, linewidth=2, fill=false) # *100 to make it fit in the colorbar
-contour!(runner.filament.thresholdMap[:, :, gridSize÷2] .* 100, levels=1, color=:green, linewidth=2, fill=false)
-contour!(runner.node.thresholdMap[:, :, gridSize÷2] .* 100, levels=1, color=:red, linewidth=2, fill=false)
-
-
-
+println("Thresholds: ", thresholds)
+savefig(joinpath(@__DIR__, "demoResult.png"))

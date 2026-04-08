@@ -107,6 +107,24 @@ function NEXUSPlus(gridSize::Int, scales::Vector{Float64})
 end
 
 """
+    (nexus::NEXUSPlus)(densityField; multithread = false)
+
+Execute the NEXUS+ pipeline. 
+Depending on multithread runs [`run(runner, densityField)`](@ref) or [`runMultithreaded(runner, densityField)`](@ref).
+
+Returns `(nodeThres, filamentThres, wallThres)`.
+"""
+
+function (nexus::NEXUSPlus)(densityField::AbstractArray{<:Real,3}; multithread=false)
+    if multithread
+        return runMultithreaded(nexus, densityField)
+    else
+        return run(nexus, densityField)
+    end
+end
+
+
+"""
     run(runner::NEXUSPlus, densityField) -> NamedTuple
 
 Execute the NEXUS+ pipeline on a density field (normalised to mean=1 internally).

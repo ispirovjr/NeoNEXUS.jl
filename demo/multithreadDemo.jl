@@ -1,41 +1,35 @@
 #!/usr/bin/env julia
 #=
-NeoNEXUS Quick Start Demo
+NeoNEXUS multithread demo.
 
-use --threads=N to run with N threads. Performance caps at N = Nscales (4 in this example)
-
+Use `--threads=N` to run with N threads. The speedup is bounded by the number of
+scales because `runMultithreaded` parallelizes over the scale loop.
 =#
 
-using NeoNEXUS
-using HDF5
-using FFTW
-using Statistics
-using Plots
+using Pkg
+Pkg.activate(@__DIR__)
+pushfirst!(LOAD_PATH, normpath(joinpath(@__DIR__, "..")))
 
-densityPath = joinpath(@__DIR__, "exampleDensity.h5")
-densityRaw = Float32.(h5open(densityPath, "r") do file
-    return read(file, "densityfield")
-end)
-densityRaw = max.(densityRaw, 1f-6)
+using JLD2
+using NeoNEXUS
+
+densityPath = joinpath(@__DIR__, "exampleDensity.jld2")
+densityRaw = Float32.(load(densityPath)["grid"])
 
 gridSize = size(densityRaw, 1)
-meanDensity = mean(densityRaw)
-normDensity = densityRaw ./ meanDensity
+scales = [sqrt(2)^n for n in 1:4]
 
-scales = [sqrt(2)^n for n in 2:2:8]
+runnerSingle = NEXUSPlus(gridSize, scales)
+runnerParallel = NEXUSPlus(gridSize, scales)
 
-runner = NEXUSPlus(gridSize, scales)
-
-resultSingle = @timed NeoNEXUS.run(runner, normDensity)
-
-resultParallel = @timed NeoNEXUS.runMultithreaded(runner, normDensity)
+resultSingle = @timed run(runnerSingle, densityRaw)
+resultParallel = @timed runMultithreaded(runnerParallel, densityRaw)
 
 timeSingle = resultSingle[2]
 timeParallel = resultParallel[2]
 
 thresholdsSingle = resultSingle[1]
 thresholdsParallel = resultParallel[1]
-
 
 nodeDiff = abs(thresholdsSingle.nodeThres - thresholdsParallel.nodeThres)
 filamentDiff = abs(thresholdsSingle.filamentThres - thresholdsParallel.filamentThres)

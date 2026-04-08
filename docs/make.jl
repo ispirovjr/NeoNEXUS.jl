@@ -9,6 +9,7 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
+        "Workflow" => "workflow.md",
         "API Reference" => "api.md",
     ],
 )
