@@ -14,15 +14,18 @@ Pkg.add("NeoNEXUS")
 ```julia
 using NeoNEXUS
 
-N = 64
-density = abs.(randn(Float32, N, N, N)) .+ 1f0
+densityPath = joinpath(@__DIR__, "demo/exampleDensity.jld2") # assuming you are in the root directory
+density = Float32.(load(densityPath)["grid"])
+
+N = size(density, 1)
+
 scales = [sqrt(2.0)^n for n in 1:4]
 
 runner = NEXUSPlus(N, scales)
 thresholds = runner(density)
 
 println(thresholds)
-println(sum(runner.filament.thresholdMap))
+println(sum(runner.wall.thresholdMap))
 ```
 
 ## What the Package Provides
