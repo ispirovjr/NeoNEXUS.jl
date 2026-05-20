@@ -53,11 +53,11 @@ function (filter::GaussianFourierFilter)(
 end
 
 """
-    (filter::GaussianFourierFilter)(field, scale, feature::NodeFeature)
+    (filter::AbstractScaleFilter)(field, scale, feature::NodeFeature)
 
-Linear Gaussian filtering for nodes (no log transform).
+Linear filtering for nodes (no log transform).
 """
-function (filter::GaussianFourierFilter)(
+function (filter::AbstractScaleFilter)(
     densityField::AbstractArray{<:Real,3},
     scale::Real,
     feature::NodeFeature
@@ -66,19 +66,24 @@ function (filter::GaussianFourierFilter)(
 end
 
 """
-    (filter::GaussianFourierFilter)(field, scale, feature::AbstractMorphologicalFeature)
+    (filter::AbstractScaleFilter)(field, scale, feature::AbstractMorphologicalFeature)
 
-Log-Gaussian filtering for sheets/filaments (NEXUS+ behaviour):
-`log₁₀(field) → Gaussian filter → 10^result`.
+Log-filtering for sheets/filaments (NEXUS+ behaviour):
+`log₁₀(field) → filter → 10^result`, preserving the mean of the field.
 """
-function (filter::GaussianFourierFilter)(
+function (filter::AbstractScaleFilter)(
     densityField::AbstractArray{<:Real,3},
     scale::Real,
     feature::AbstractMorphologicalFeature
 )
     logField = log10.(max.(densityField, eps(Float32)))
     filteredLog = filter(logField, scale)
-    return 10.0 .^ filteredLog
+    
+    filteredExp = 10.0 .^ filteredLog
+    c_rn = sum(densityField) / sum(filteredExp)
+    filteredExp .*= c_rn
+    
+    return filteredExp
 end
 
 
@@ -140,22 +145,3 @@ function (filter::TopHatFourierFilter)(
     return FFTW.irfft(fftField, Nx)
 end
 
-"""
-    (filter::TopHatFourierFilter)(field, scale, feature::NodeFeature)
-
-Linear top-hat filtering for nodes (no log transform).
-"""
-function (filter::TopHatFourierFilter)(densityField::AbstractArray{<:Real,3}, scale::Real, feature::NodeFeature)
-    return filter(densityField, scale)
-end
-
-"""
-    (filter::TopHatFourierFilter)(field, scale, feature::AbstractMorphologicalFeature)
-
-Log–top-hat filtering for sheets/filaments (NEXUS+ behaviour).
-"""
-function (filter::TopHatFourierFilter)(densityField::AbstractArray{<:Real,3}, scale::Real, feature::AbstractMorphologicalFeature)
-    logField = log10.(max.(densityField, eps(Float32)))
-    filteredLog = filter(logField, scale)
-    return 10.0 .^ filteredLog
-end

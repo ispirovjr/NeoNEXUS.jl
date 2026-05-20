@@ -29,8 +29,11 @@ The highest-level entry point is `NEXUSPlus`, which builds a node / filament / w
 ```julia
 using NeoNEXUS
 
-N = 64
-density = abs.(randn(Float32, N, N, N)) .+ 1f0 # load data
+densityPath = joinpath(@__DIR__, "demo/exampleDensity.jld2") # assuming you are in the root directory
+density = Float32.(load(densityPath)["grid"])
+
+N = size(density, 1)
+
 scales = [sqrt(2.0)^n for n in 1:4]
 
 runner = NEXUSPlus(N, scales)
