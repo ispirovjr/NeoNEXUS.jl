@@ -20,12 +20,13 @@ end
 
 
 """
-    run(runner::MMFClassic, densityField) -> Vector{Float32}
+    run(runner::MMFClassic, densityField; periodicBounds=false) -> Vector{Float32}
 
 Execute the MMF pipeline: scale loop with cache reuse, then hierarchical
 plateau-based thresholding. Returns per-feature threshold values.
+Set `periodicBounds=true` to join components across opposite grid faces.
 """
-function run(runner::MMFClassic, densityField::AbstractArray{<:Real,3})
+function run(runner::MMFClassic, densityField::AbstractArray{<:Real,3}; periodicBounds::Bool=false)
     # Get grid size from first feature
     gridSize = size(runner.features[1].significanceMap)
 
@@ -60,7 +61,7 @@ function run(runner::MMFClassic, densityField::AbstractArray{<:Real,3})
         end
 
         # Apply plateau threshold (where component elimination rate stabilizes)
-        thresh = componentErosionPlateauThreshold!(feature)
+        thresh = componentErosionPlateauThreshold!(feature; periodicBounds=periodicBounds)
         push!(thresholds, thresh)
     end
 
@@ -107,25 +108,26 @@ function NEXUSPlus(gridSize::Int, scales::Vector{Float64})
 end
 
 """
-    (nexus::NEXUSPlus)(densityField; multithread = false)
+    (nexus::NEXUSPlus)(densityField; multithread=false, periodicBounds=false)
 
 Execute the NEXUS+ pipeline. 
 Depending on multithread runs [`run(runner, densityField)`](@ref) or [`runMultithreaded(runner, densityField)`](@ref).
 
 Returns `(nodeThres, filamentThres, wallThres)`.
+Set `periodicBounds=true` to join node components across opposite grid faces.
 """
 
-function (nexus::NEXUSPlus)(densityField::AbstractArray{<:Real,3}; multithread=false)
+function (nexus::NEXUSPlus)(densityField::AbstractArray{<:Real,3}; multithread=false, periodicBounds::Bool=false)
     if multithread
-        return runMultithreaded(nexus, densityField)
+        return runMultithreaded(nexus, densityField; periodicBounds=periodicBounds)
     else
-        return run(nexus, densityField)
+        return run(nexus, densityField; periodicBounds=periodicBounds)
     end
 end
 
 
 """
-    run(runner::NEXUSPlus, densityField) -> NamedTuple
+    run(runner::NEXUSPlus, densityField; periodicBounds=false) -> NamedTuple
 
 Execute the NEXUS+ pipeline on a density field (normalised to mean=1 internally).
 
@@ -135,7 +137,7 @@ Thresholding:
 
 Returns `(nodeThres, filamentThres, wallThres)`.
 """
-function run(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
+function run(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3}; periodicBounds::Bool=false)
     meanρ = Statistics.mean(densityField)
     normDensity = densityField ./ meanρ
 
@@ -162,7 +164,8 @@ function run(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
         normDensity,
         370.0,
         0.50;
-        excludeEmpty=false
+        excludeEmpty=false,
+        periodicBounds=periodicBounds
     )
 
     maskSignatureMap!(runner.filament, runner.node)
@@ -177,7 +180,7 @@ end
 
 
 """
-    runMultithreaded(runner::NEXUSPlus, densityField) -> NamedTuple
+    runMultithreaded(runner::NEXUSPlus, densityField; periodicBounds=false) -> NamedTuple
 
 Multithreaded variant of [`run`](@ref) for [`NEXUSPlus`](@ref).
 
@@ -188,7 +191,7 @@ cache and signature arrays. Thresholding is identical to the sequential version.
     Requires `julia --threads=N`. FFTW internal threading is disabled
     automatically for thread safety.
 """
-function runMultithreaded(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3})
+function runMultithreaded(runner::NEXUSPlus, densityField::AbstractArray{<:Real,3}; periodicBounds::Bool=false)
     # Disable FFTW internal threading for thread safety
     FFTW.set_num_threads(1)
 
@@ -231,7 +234,8 @@ function runMultithreaded(runner::NEXUSPlus, densityField::AbstractArray{<:Real,
         normDensity,
         370.0,
         0.50;
-        excludeEmpty=false
+        excludeEmpty=false,
+        periodicBounds=periodicBounds
     )
 
     # 2. Filaments: mask by nodes, then ΔM² threshold

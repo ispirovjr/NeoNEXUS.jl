@@ -23,12 +23,13 @@ volume(cc::ConnectedComponent) = length(cc.voxels)
 
 
 """
-    findConnectedComponents(signatureMap) -> Vector{ConnectedComponent}
+    findConnectedComponents(signatureMap; periodicBounds=false) -> Vector{ConnectedComponent}
 
 Find all connected components (6-connectivity) of non-zero voxels in a 3D field.
 Returns components sorted by maximum signature (descending).
+Set `periodicBounds=true` to connect opposite faces along all three axes.
 """
-function findConnectedComponents(signatureMap::AbstractArray{<:Real,3})
+function findConnectedComponents(signatureMap::AbstractArray{<:Real,3}; periodicBounds::Bool=false)
     dims = size(signatureMap)
     visited = falses(dims)
     components = ConnectedComponent[]
@@ -68,10 +69,18 @@ function findConnectedComponents(signatureMap::AbstractArray{<:Real,3})
             for offset in offsets
                 neighbor = current + offset
 
-                # Bounds check
-                if checkbounds(Bool, signatureMap, neighbor) &&
-                   !visited[neighbor] &&
-                   signatureMap[neighbor] > 0
+                # Only consult periodicBounds for neighbors outside the grid.
+                if !checkbounds(Bool, signatureMap, neighbor)
+                    periodicBounds || continue
+                    x, y, z = Tuple(neighbor)
+                    neighbor = CartesianIndex(
+                        x < 1 ? dims[1] : x > dims[1] ? 1 : x,
+                        y < 1 ? dims[2] : y > dims[2] ? 1 : y,
+                        z < 1 ? dims[3] : z > dims[3] ? 1 : z
+                    )
+                end
+
+                if !visited[neighbor] && signatureMap[neighbor] > 0
                     visited[neighbor] = true
                     push!(queue, neighbor)
                 end
@@ -89,13 +98,14 @@ end
 
 
 """
-    labelConnectedComponents(signatureMap) -> (labelMap, components)
+    labelConnectedComponents(signatureMap; periodicBounds=false) -> (labelMap, components)
 
 Create a label map assigning each voxel its component ID (0 for background).
 Returns the `Int32` label array and the list of [`ConnectedComponent`](@ref)s.
+`periodicBounds` is passed to [`findConnectedComponents`](@ref).
 """
-function labelConnectedComponents(signatureMap::AbstractArray{<:Real,3})
-    components = findConnectedComponents(signatureMap)
+function labelConnectedComponents(signatureMap::AbstractArray{<:Real,3}; periodicBounds::Bool=false)
+    components = findConnectedComponents(signatureMap; periodicBounds=periodicBounds)
     labelMap = zeros(Int32, size(signatureMap))
 
     for cc in components
@@ -123,12 +133,13 @@ end
 
 
 """
-    pruneSmallComponents!(signatureMap, minVoxels) -> (nKept, nPruned, nVoxelsPruned)
+    pruneSmallComponents!(signatureMap, minVoxels; periodicBounds=false) -> (nKept, nPruned, nVoxelsPruned)
 
 Zero out connected components with fewer than `minVoxels` voxels.
+`periodicBounds` is passed to [`findConnectedComponents`](@ref).
 """
-function pruneSmallComponents!(signatureMap::AbstractArray{<:Real,3}, minVoxels::Int)
-    components = findConnectedComponents(signatureMap)
+function pruneSmallComponents!(signatureMap::AbstractArray{<:Real,3}, minVoxels::Int; periodicBounds::Bool=false)
+    components = findConnectedComponents(signatureMap; periodicBounds=periodicBounds)
 
     nKept = 0
     nPruned = 0
@@ -152,17 +163,19 @@ end
 
 
 """
-    pruneSmallMassComponents!(signatureMap, densityField, minMass) -> (nKept, nPruned, nVoxelsPruned, massPruned)
+    pruneSmallMassComponents!(signatureMap, densityField, minMass; periodicBounds=false) -> (nKept, nPruned, nVoxelsPruned, massPruned)
 
 Zero out connected components whose total mass (sum of `densityField` at component
 voxels) is less than `minMass`.
+`periodicBounds` is passed to [`findConnectedComponents`](@ref).
 """
 function pruneSmallMassComponents!(
     signatureMap::AbstractArray{<:Real,3},
     densityField::AbstractArray{<:Real,3},
-    minMass::Real
+    minMass::Real;
+    periodicBounds::Bool=false
 )
-    components = findConnectedComponents(signatureMap)
+    components = findConnectedComponents(signatureMap; periodicBounds=periodicBounds)
 
     nKept = 0
     nPruned = 0
@@ -189,10 +202,10 @@ function pruneSmallMassComponents!(
 end
 
 """
-    pruneSmallMassComponents!(feature, densityField, minMass)
+    pruneSmallMassComponents!(feature, densityField, minMass; periodicBounds=false)
 
 Convenience method operating on `feature.significanceMap`.
 """
-function pruneSmallMassComponents!(feature::AbstractMorphologicalFeature, densityField::AbstractArray{<:Real,3}, minMass::Real)
-    return pruneSmallMassComponents!(feature.significanceMap, densityField, minMass)
+function pruneSmallMassComponents!(feature::AbstractMorphologicalFeature, densityField::AbstractArray{<:Real,3}, minMass::Real; periodicBounds::Bool=false)
+    return pruneSmallMassComponents!(feature.significanceMap, densityField, minMass; periodicBounds=periodicBounds)
 end

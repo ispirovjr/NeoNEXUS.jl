@@ -384,13 +384,14 @@ end
 
 
 """
-    findComponentPercentageThreshold!(feature, densityField, densityRequirement, targetPercentage; nBins=100, excludeEmpty=true) -> Float32
+    findComponentPercentageThreshold!(feature, densityField, densityRequirement, targetPercentage; nBins=100, excludeEmpty=true, periodicBounds=false) -> Float32
 
 Find the signature threshold at which `targetPercentage` of connected components
 meet the `densityRequirement` (average density ≥ requirement).
 
 When `excludeEmpty=true`, components with no surviving voxels at a given threshold
 are excluded from the denominator.
+Set `periodicBounds=true` to treat structures crossing opposite faces as one component.
 """
 function findComponentPercentageThreshold!(
     feature::AbstractMorphologicalFeature,
@@ -398,12 +399,13 @@ function findComponentPercentageThreshold!(
     densityRequirement::Real,
     targetPercentage::Real;
     nBins::Int=100,
-    excludeEmpty::Bool=true
+    excludeEmpty::Bool=true,
+    periodicBounds::Bool=false
 )
     sigMap = feature.significanceMap
 
     # 1. Identify connected components on the base mask (sig > 0)
-    components = findConnectedComponents(sigMap)
+    components = findConnectedComponents(sigMap; periodicBounds=periodicBounds)
     nComponents = length(components)
 
     if nComponents == 0
@@ -502,15 +504,17 @@ end
 
 
 """
-    componentDensityThreshold!(feature, densityField, densityCutoff) -> (nQualifying, nTotal)
+    componentDensityThreshold!(feature, densityField, densityCutoff; periodicBounds=false) -> (nQualifying, nTotal)
 
 Keep only connected components whose average density ≥ `densityCutoff`.
 Returns counts of qualifying and total components.
+`periodicBounds` is passed to [`findConnectedComponents`](@ref).
 """
 function componentDensityThreshold!(
     feature::AbstractMorphologicalFeature,
     densityField::AbstractArray{<:Real,3},
-    densityCutoff::Real
+    densityCutoff::Real;
+    periodicBounds::Bool=false
 )
     sigMap = feature.significanceMap
     thresMap = feature.thresholdMap
@@ -518,7 +522,7 @@ function componentDensityThreshold!(
     @assert size(sigMap) == size(densityField) "Signature and density fields must have same size"
 
     # Find connected components
-    components = findConnectedComponents(sigMap)
+    components = findConnectedComponents(sigMap; periodicBounds=periodicBounds)
 
     if isempty(components)
         fill!(thresMap, 0f0)
@@ -547,10 +551,11 @@ end
 # Returns `(logThresholds, survivalFractions)`.
 function calculateComponentSurvival(
     feature::AbstractMorphologicalFeature,
-    nBins::Int=100
+    nBins::Int=100;
+    periodicBounds::Bool=false
 )
     sigMap = feature.significanceMap
-    components = findConnectedComponents(sigMap)
+    components = findConnectedComponents(sigMap; periodicBounds=periodicBounds)
     nTotal = length(components)
 
     if nTotal == 0
@@ -587,17 +592,19 @@ end
 
 
 """
-    componentErosionPercentileThreshold!(feature [, targetPercent=0.5]; nBins=100) -> Float32
+    componentErosionPercentileThreshold!(feature [, targetPercent=0.5]; nBins=100, periodicBounds=false) -> Float32
 
 Apply a threshold at the signature value where the fraction of surviving
 connected components equals `targetPercent`.
+`periodicBounds` is passed to [`findConnectedComponents`](@ref).
 """
 function componentErosionPercentileThreshold!(
     feature::AbstractMorphologicalFeature,
     targetPercent::Real=0.5;
-    nBins::Int=100
+    nBins::Int=100,
+    periodicBounds::Bool=false
 )
-    logThresholds, survivalFractions = calculateComponentSurvival(feature, nBins)
+    logThresholds, survivalFractions = calculateComponentSurvival(feature, nBins; periodicBounds=periodicBounds)
 
     if isempty(survivalFractions)
         return 0.0f0
@@ -634,18 +641,20 @@ end
 
 
 """
-    componentErosionPlateauThreshold!(feature; nBins=500, rateThreshold=0.05) -> Float32
+    componentErosionPlateauThreshold!(feature; nBins=500, rateThreshold=0.05, periodicBounds=false) -> Float32
 
 Apply a threshold where the component elimination rate stabilises (plateau).
 The plateau is detected where `|d(survival)/d(log S)|` drops below
 `rateThreshold` × max rate.
+`periodicBounds` is passed to [`findConnectedComponents`](@ref).
 """
 function componentErosionPlateauThreshold!(
     feature::AbstractMorphologicalFeature;
     nBins::Int=500,
-    rateThreshold::Real=0.05
+    rateThreshold::Real=0.05,
+    periodicBounds::Bool=false
 )
-    logThresholds, survivalFractions = calculateComponentSurvival(feature, nBins)
+    logThresholds, survivalFractions = calculateComponentSurvival(feature, nBins; periodicBounds=periodicBounds)
 
     if length(survivalFractions) < 5
         return 0.0f0

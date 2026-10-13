@@ -94,7 +94,9 @@ In concrete terms:
 ### Thresholding and Cleanup
 
 - Threshold helpers include flat, volume-based, mass-based, average-density, `deltaMSquaredThreshold!`, and connected-component-based methods.
-- Connected components use 6-connectivity.
+- Connected components use 6-connectivity. Component finding, labeling, pruning,
+  and component-based threshold helpers accept `periodicBounds=true` to join
+  opposite grid faces along all three axes.
 - Utilities such as `maskSignatureMap!`, `findConnectedComponents`, `pruneSmallComponents!`, and `pruneSmallMassComponents!` support post-processing.
 
 ### Runners

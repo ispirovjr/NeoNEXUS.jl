@@ -22,5 +22,6 @@ Modularized test structure:
     include("testOrchestration.jl")
     include("testThresholds.jl")
     include("testConnectedComponents.jl")
+    include("testPeriodicComponents.jl")
 end
 
